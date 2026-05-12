@@ -20,6 +20,18 @@ class MasterDataSeeder extends Seeder {
             'password' => Hash::make('password123'), // Password default
             'role_id' => 1,
         ]);
+        DB::table('users')->insert([
+            'name' => 'Guru',
+            'email' => 'guru@ecolearn4.com',
+            'password' => Hash::make('password123'), // Password default
+            'role_id' => 2,
+        ]);
+        DB::table('users')->insert([
+            'name' => 'Siswa',
+            'email' => 'siswa@ecolearn4.com',
+            'password' => Hash::make('password123'), // Password default
+            'role_id' => 3,
+        ]);
 
         // 3. Suntik Data Menu Berdasarkan Role
         DB::table('menus')->insert([
@@ -29,7 +41,7 @@ class MasterDataSeeder extends Seeder {
             ['nama_menu' => 'Kelola Menu', 'url' => '/admin/menus', 'role_id' => 1],
             // Menu Guru
             ['nama_menu' => 'Dashboard Guru', 'url' => '/dashboard', 'role_id' => 2],
-            ['nama_menu' => '? Buat Soal AI', 'url' => '/guru/generate', 'role_id' => 2],
+            ['nama_menu' => 'Buat Soal AI', 'url' => '/guru/generate', 'role_id' => 2],
             ['nama_menu' => 'Bank Soal', 'url' => '/guru/soal', 'role_id' => 2],
             // Menu Siswa
             ['nama_menu' => 'Dashboard Siswa', 'url' => '/dashboard', 'role_id' => 3],

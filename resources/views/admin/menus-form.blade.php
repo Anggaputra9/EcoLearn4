@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ isset($menu) ? __('?? Edit Menu & Halaman') : __('? Tambah Menu & Halaman Baru') }}
+            {{ isset($menu) ? __('Edit Menu & Halaman') : __('? Tambah Menu & Halaman Baru') }}
         </h2>
     </x-slot>
 

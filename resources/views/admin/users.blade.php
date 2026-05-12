@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('?? Kelola Pengguna') }}
+            {{ __('Kelola Pengguna') }}
         </h2>
     </x-slot>
 
@@ -54,13 +54,13 @@
                                 <td class="py-3 px-6 text-center">
                                     <div class="flex items-center justify-center gap-3">
                                         <a href="{{ url('/admin/users/'.$user->id.'/edit') }}" class="flex items-center gap-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-md text-sm font-semibold transition duration-150 shadow-sm">
-                                            ?? Edit
+                                            Edit
                                         </a>
                                         <form action="{{ url('/admin/users/'.$user->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus pengguna ini?');" class="inline-block m-0">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="flex items-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md text-sm font-semibold transition duration-150 shadow-sm">
-                                                ??? Hapus
+                                                Hapus
                                             </button>
                                         </form>
                                     </div>

@@ -1,76 +1,133 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Kelola Menu Aplikasi') }}
-        </h2>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-xl font-bold text-slate-800">Kelola Menu</h2>
+                <p class="text-sm text-slate-500">Atur menu navigasi dinamis per peran.</p>
+            </div>
+            <button class="btn-primary" @click="$dispatch('open-modal', 'menu-create')">
+                <x-icon name="plus" class="w-4 h-4"/> Tambah Menu
+            </button>
+        </div>
     </x-slot>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            
-            @if(session('success'))
-                <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">
-                    <p class="font-bold">Berhasil</p>
-                    <p>{{ session('success') }}</p>
-                </div>
-            @endif
+    <form method="GET" class="glass p-4 mb-6 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
+        <div class="relative">
+            <x-icon name="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+            <input name="q" value="{{ $q }}" placeholder="Cari nama menu atau URL…" class="input-glass pl-9">
+        </div>
+        <select name="role_id" class="input-glass">
+            <option value="">Semua peran</option>
+            @foreach($roles as $r)
+                <option value="{{ $r->id }}" @selected((string)$roleId === (string)$r->id)>{{ $r->nama_role }}</option>
+            @endforeach
+        </select>
+        <button class="btn-secondary"><x-icon name="search" class="w-4 h-4"/> Filter</button>
+    </form>
 
-            @if(session('error'))
-                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
-                    <p class="font-bold">Gagal</p>
-                    <p>{{ session('error') }}</p>
-                </div>
-            @endif
+    <div class="glass overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-white/40 text-xs uppercase tracking-wider text-slate-600">
+                    <tr>
+                        <th class="px-5 py-3 text-left">Nama Menu</th>
+                        <th class="px-5 py-3 text-left">URL</th>
+                        <th class="px-5 py-3 text-left">Untuk Peran</th>
+                        <th class="px-5 py-3 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/40">
+                    @forelse($menus as $m)
+                        <tr class="hover:bg-white/40 transition">
+                            <td class="px-5 py-3 font-medium text-slate-800">{{ $m->nama_menu }}</td>
+                            <td class="px-5 py-3 text-emerald-600 font-mono text-xs">{{ $m->url }}</td>
+                            <td class="px-5 py-3"><span class="badge badge-violet">{{ $m->nama_role }}</span></td>
+                            <td class="px-5 py-3 text-right">
+                                <button class="btn-ghost" @click="$dispatch('open-modal', 'menu-edit-{{ $m->id }}')">
+                                    <x-icon name="pencil" class="w-4 h-4"/>
+                                </button>
+                                <button class="btn-ghost text-rose-600" @click="$dispatch('open-modal', 'menu-del-{{ $m->id }}')">
+                                    <x-icon name="trash" class="w-4 h-4"/>
+                                </button>
+                            </td>
+                        </tr>
 
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg border-t-4 border-emerald-500">
-                <div class="p-6 text-gray-900 overflow-x-auto">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-bold text-gray-700">Daftar Menu Dinamis</h3>
-                        <a href="{{ url('/admin/menus/create') }}" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded text-sm transition duration-150">
-                            + Tambah Menu
-                        </a>
-                    </div>
-                    <table class="min-w-full leading-normal border border-gray-200">
-                        <thead>
-                            <tr class="bg-gray-100 text-left text-gray-600 uppercase text-sm leading-normal">
-                                <th class="py-3 px-6 border-b border-gray-200">ID</th>
-                                <th class="py-3 px-6 border-b border-gray-200">Nama Menu</th>
-                                <th class="py-3 px-6 border-b border-gray-200">URL / Rute</th>
-                                <th class="py-3 px-6 border-b border-gray-200">Ditampilkan Untuk</th>
-                                <th class="py-3 px-6 border-b border-gray-200 text-center">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-gray-600 text-sm font-light">
-                            @foreach($menus as $menu)
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                <td class="py-3 px-6 text-left whitespace-nowrap">{{ $menu->id }}</td>
-                                <td class="py-3 px-6 text-left font-medium">{{ $menu->nama_menu }}</td>
-                                <td class="py-3 px-6 text-left text-blue-500">{{ $menu->url }}</td>
-                                <td class="py-3 px-6 text-left">
-                                    <span class="bg-purple-100 text-purple-800 py-1 px-3 rounded-full text-xs font-semibold">
-                                        {{ $menu->nama_role }}
-                                    </span>
-                                </td>
-                                <td class="py-3 px-6 text-center">
-                                    <div class="flex items-center justify-center gap-3">
-                                        <a href="{{ url('/admin/menus/'.$menu->id.'/edit') }}" class="flex items-center gap-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-md text-sm font-semibold transition duration-150 shadow-sm">
-                                            Edit
-                                        </a>
-                                        <form action="{{ url('/admin/menus/'.$menu->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus menu ini?');" class="inline-block m-0">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="flex items-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md text-sm font-semibold transition duration-150 shadow-sm">
-                                                Hapus
-                                            </button>
-                                        </form>
+                        <x-modal-glass name="menu-edit-{{ $m->id }}" title="Edit Menu" max-width="2xl">
+                            <form method="POST" action="{{ url('/admin/menus/'.$m->id) }}" class="space-y-3">
+                                @csrf @method('PUT')
+                                <div class="grid sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Nama Menu</label>
+                                        <input name="nama_menu" value="{{ $m->nama_menu }}" required class="input-glass">
                                     </div>
-                                </td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">URL</label>
+                                        <input name="url" value="{{ $m->url }}" required class="input-glass">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Untuk Peran</label>
+                                    <select name="role_id" class="input-glass">
+                                        @foreach($roles as $r)
+                                            <option value="{{ $r->id }}" @selected($r->id == $m->role_id)>{{ $r->nama_role }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Konten Halaman <span class="text-slate-400">(opsional)</span></label>
+                                    <textarea name="konten" rows="6" class="input-glass">{{ $m->konten }}</textarea>
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'menu-edit-{{ $m->id }}')">Batal</button>
+                                    <button class="btn-primary">Simpan</button>
+                                </div>
+                            </form>
+                        </x-modal-glass>
+
+                        <x-modal-glass name="menu-del-{{ $m->id }}" title="Hapus Menu" max-width="md">
+                            <p class="text-slate-600">Yakin ingin menghapus menu <span class="font-semibold">{{ $m->nama_menu }}</span>?</p>
+                            <form method="POST" action="{{ url('/admin/menus/'.$m->id) }}" class="flex justify-end gap-2 mt-5">
+                                @csrf @method('DELETE')
+                                <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'menu-del-{{ $m->id }}')">Batal</button>
+                                <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
+                            </form>
+                        </x-modal-glass>
+                    @empty
+                        <tr><td colspan="4" class="px-5 py-10 text-center text-slate-500">Tidak ada menu.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="px-5 py-3">{{ $menus->links() }}</div>
+    </div>
+
+    <x-modal-glass name="menu-create" title="Tambah Menu" max-width="2xl">
+        <form method="POST" action="{{ url('/admin/menus') }}" class="space-y-3">
+            @csrf
+            <div class="grid sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nama Menu</label>
+                    <input name="nama_menu" required class="input-glass">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">URL</label>
+                    <input name="url" required class="input-glass" placeholder="/contoh">
                 </div>
             </div>
-        </div>
-    </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Untuk Peran</label>
+                <select name="role_id" class="input-glass" required>
+                    @foreach($roles as $r) <option value="{{ $r->id }}">{{ $r->nama_role }}</option> @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Konten Halaman <span class="text-slate-400">(opsional)</span></label>
+                <textarea name="konten" rows="5" class="input-glass"></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'menu-create')">Batal</button>
+                <button class="btn-primary">Simpan</button>
+            </div>
+        </form>
+    </x-modal-glass>
 </x-app-layout>

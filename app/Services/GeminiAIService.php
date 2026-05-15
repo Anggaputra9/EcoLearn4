@@ -2,47 +2,20 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
-
-class GeminiAIService
+/**
+ * @deprecated Gunakan App\Services\AIService.
+ * Subclass ini ada hanya untuk backwards compatibility dengan kode lama.
+ */
+class GeminiAIService extends AIService
 {
-    protected $apiKey;
-    protected $baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/';
-
-    public function __construct()
+    /** Akses model default seperti API lama. */
+    public function model(): string
     {
-        // Mengambil API Key dari file .env demi keamanan
-        $this->apiKey = env('GEMINI_API_KEY');
+        return $this->defaultModel('gemini');
     }
 
-    /**
-     * Mengirim prompt ke Gemini dan mendapatkan balasan teks.
-     */
-    public function generateText($prompt)
+    public function hasApiKey(): bool
     {
-        // Menggunakan model gemini-3.1-flash-lite yang stabil
-        $url = $this->baseUrl . 'gemini-3.1-flash-lite:generateContent?key=' . $this->apiKey;
-
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-        ])
-        ->timeout(120)
-        ->post($url, [
-            'contents' => [
-                [
-                    'parts' => [
-                        ['text' => $prompt]
-                    ]
-                ]
-            ]
-        ]);
-
-        // Jika request berhasil
-        if ($response->successful()) {
-            return $response->json()['candidates'][0]['content']['parts'][0]['text'] ?? 'Tidak ada teks yang dikembalikan.';
-        }
-
-        // Jika terjadi error
-        return 'Error API Gemini: ' . $response->body();
+        return $this->hasAnyKey();
     }
 }

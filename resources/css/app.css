@@ -131,7 +131,27 @@
 ::-webkit-scrollbar-thumb:hover { background: rgba(16,185,129,0.55); }
 .dark ::-webkit-scrollbar-thumb { background: rgba(16,185,129,0.45); }
 
+/* === Responsive helpers === */
+/* Cegah horizontal page scroll yang sering disebabkan elemen anak overflow */
+html, body { overflow-x: hidden; max-width: 100%; }
+
+/* Tabel di dalam .glass scroll horizontal di mobile, tetap rapi di desktop */
+.glass .overflow-x-auto, .glass-strong .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Cegah iOS zoom-on-focus di input (font < 16px memicu auto-zoom) */
+@media (max-width: 640px) {
+    .input-glass, input[type="text"], input[type="email"], input[type="password"],
+    input[type="number"], input[type="search"], input[type="url"], textarea, select {
+        font-size: 16px;
+    }
+    .btn-primary, .btn-secondary, .btn-danger { padding: 0.6rem 0.9rem; }
+    table { font-size: 0.8125rem; }
+}
+
 /* Anti-cheat: menonaktifkan select & context-menu di halaman ujian saat aktif */
+
 body.exam-locked, body.exam-locked * {
     -webkit-user-select: none !important;
     -moz-user-select: none !important;

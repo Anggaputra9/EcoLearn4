@@ -32,14 +32,16 @@
 @endphp
 
 <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-       class="fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300">
+       class="fixed inset-y-0 left-0 z-40 w-[80vw] max-w-[18rem] lg:w-72 transition-transform duration-300">
     <div class="m-3 lg:m-4 h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-2rem)] glass overflow-hidden flex flex-col">
-        <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-5 py-5 border-b border-white/40 dark:border-white/10">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 grid place-items-center shadow-lg">
+        <a href="{{ route('dashboard') }}"
+           @click="sidebarOpen = false"
+           class="flex items-center gap-3 px-4 sm:px-5 py-4 sm:py-5 border-b border-white/40 dark:border-white/10">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 grid place-items-center shadow-lg shrink-0">
                 <x-icon name="leaf" class="w-6 h-6 text-white"/>
             </div>
-            <div>
-                <p class="font-bold text-slate-800 dark:text-slate-100 tracking-tight">{{ $appName }}</p>
+            <div class="min-w-0">
+                <p class="font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate">{{ $appName }}</p>
                 <p class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">v{{ config('app.version') }}</p>
             </div>
         </a>
@@ -51,12 +53,15 @@
                     $clean = trim($url, '/');
                     $isActive = request()->is($clean) || request()->is($clean.'/*');
                 @endphp
-                <a href="{{ url($url) }}" class="sidebar-link {{ $isActive ? 'active' : '' }}">
-                    <x-icon :name="$icon" class="w-5 h-5"/>
-                    <span>{{ $label }}</span>
+                <a href="{{ url($url) }}"
+                   @click="sidebarOpen = false"
+                   class="sidebar-link {{ $isActive ? 'active' : '' }}">
+                    <x-icon :name="$icon" class="w-5 h-5 shrink-0"/>
+                    <span class="truncate">{{ $label }}</span>
                 </a>
             @endforeach
         </nav>
+
 
         <div class="border-t border-white/40 dark:border-white/10 p-3">
             <a href="{{ route('profile.edit') }}"

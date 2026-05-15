@@ -2,9 +2,10 @@
     $isEdit = (bool) $k;
     $allModels = collect($providers)->mapWithKeys(fn ($n, $p) => [$p => $aiService->staticModelList($p)])->all();
     $currentProvider = $isEdit ? $k->provider : 'gemini';
+    $currentModel    = $isEdit ? (string) $k->model : '';
 @endphp
 
-<div x-data="{ provider: '{{ $currentProvider }}' }" class="space-y-3">
+<div x-data="{ provider: '{{ $currentProvider }}', model: @js($currentModel) }" class="space-y-3">
     <div class="grid sm:grid-cols-2 gap-3">
         <div>
             <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Label</label>
@@ -22,16 +23,31 @@
     </div>
 
     <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Model (opsional)</label>
-        <select name="model" class="input-glass">
-            <option value="">— Pakai default provider —</option>
-            @foreach($allModels as $p => $list)
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+            Model
+            <span class="text-xs font-normal text-slate-400">(opsional · boleh ketik kustom)</span>
+        </label>
+
+        {{-- Datalist per-provider, sehingga pengguna bisa pilih dari saran ATAU ketik bebas
+             (mis. nama model preview/experimental yang belum ada di daftar). --}}
+        @foreach($allModels as $p => $list)
+            <datalist id="aikey-models-{{ $p }}-{{ $isEdit ? $k->id : 'new' }}">
                 @foreach($list as $m)
-                    <option value="{{ $m }}" x-show="provider === '{{ $p }}'"
-                            @selected($isEdit && $k->model === $m)>{{ $m }}</option>
+                    <option value="{{ $m }}"></option>
                 @endforeach
-            @endforeach
-        </select>
+            </datalist>
+        @endforeach
+
+        <input name="model"
+               x-model="model"
+               :list="'aikey-models-' + provider + '-{{ $isEdit ? $k->id : 'new' }}'"
+               autocomplete="off"
+               placeholder="Kosongkan = pakai default provider"
+               class="input-glass font-mono text-sm">
+
+        <p class="mt-1 text-[11px] text-slate-500">
+            Untuk Gemini misalnya: <span class="font-mono">gemini-3.0-pro</span>, <span class="font-mono">gemini-2.5-flash</span>, atau model preview kustom.
+        </p>
     </div>
 
     <div>

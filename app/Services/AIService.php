@@ -261,15 +261,45 @@ class AIService
     public function staticModelList(string $provider): array
     {
         return match ($provider) {
-            'openai'     => ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o3-mini'],
-            'anthropic'  => ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
-            'openrouter' => ['openrouter/auto', 'meta-llama/llama-3.1-70b-instruct', 'google/gemini-2.0-flash-exp:free'],
-            'groq'       => ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
-            default      => ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'],
+            'openai'     => [
+                'gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1',
+                'o3-mini', 'o4-mini',
+            ],
+            'anthropic'  => [
+                'claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022',
+                'claude-3-7-sonnet-20250219', 'claude-3-opus-20240229',
+            ],
+            'openrouter' => [
+                'openrouter/auto',
+                'google/gemini-2.5-pro', 'google/gemini-2.5-flash',
+                'google/gemini-2.0-flash-exp:free',
+                'meta-llama/llama-3.1-70b-instruct',
+            ],
+            'groq'       => [
+                'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile',
+                'llama-3.1-8b-instant', 'mixtral-8x7b-32768',
+            ],
+            default      => [
+                // Gemini — termasuk seri terbaru (3.x) sampai legacy (1.5).
+                // Pengguna juga bebas mengetik nama model lain (mis. preview / experimental).
+                'gemini-3.0-pro',
+                'gemini-3.0-flash',
+                'gemini-3.0-flash-lite',
+                'gemini-2.5-pro',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-lite',
+                'gemini-2.0-pro',
+                'gemini-2.0-flash',
+                'gemini-2.0-flash-lite',
+                'gemini-1.5-pro',
+                'gemini-1.5-flash',
+                'gemini-1.5-flash-8b',
+            ],
         };
     }
 
     public function providers(): array
+
     {
         return [
             'gemini'     => 'Google Gemini',

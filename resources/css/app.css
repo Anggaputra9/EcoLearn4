@@ -13,10 +13,12 @@
         @apply bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)] rounded-2xl text-slate-100;
     }
     .glass-strong {
-        @apply bg-white/85 backdrop-blur-2xl border border-white/60 shadow-[0_8px_32px_rgba(16,185,129,0.18)] rounded-2xl
+        /* Lebih opaque dari .glass agar modal benar-benar tampak terpisah dari konten di belakang */
+        @apply bg-white/95 backdrop-blur-2xl border border-white/70 shadow-[0_20px_60px_rgba(15,23,42,0.35)] rounded-2xl
                text-slate-700
-               dark:bg-slate-900/85 dark:border-white/10 dark:text-slate-100;
+               dark:bg-slate-900/95 dark:border-white/10 dark:text-slate-100;
     }
+
     .btn-primary {
         @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white
                bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700

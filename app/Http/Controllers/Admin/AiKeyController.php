@@ -116,29 +116,46 @@ class AiKeyController extends Controller
     public function test(AiKey $aiKey): RedirectResponse
     {
         try {
-            // Pakai service tetapi paksa pakai key ini
             $svc = new AIService();
-            // memanggil generateText akan memutar semua key, jadi kita panggil langsung
-            $reflection = new \ReflectionMethod($svc, match ($aiKey->provider) {
-                'gemini' => 'callGemini',
-                'anthropic' => 'callAnthropic',
-                default => 'callOpenAICompatible',
-            });
+            $reflection = new \ReflectionMethod($svc, 'callProvider');
             $reflection->setAccessible(true);
 
-            $args = $aiKey->provider === 'gemini'
-                ? [$aiKey->api_key, $aiKey->model ?: $svc->defaultModel('gemini'), 'Balas: pong', null, false]
-                : ($aiKey->provider === 'anthropic'
-                    ? [$aiKey->api_key, $aiKey->model ?: $svc->defaultModel('anthropic'), 'Balas: pong', null, false]
-                    : [$aiKey->provider, $aiKey->api_key, $aiKey->model ?: $svc->defaultModel($aiKey->provider), 'Balas: pong', null, false]);
-
-            $reply = $reflection->invokeArgs($svc, $args);
+            $reply = $reflection->invokeArgs($svc, [
+                $aiKey->provider,
+                $aiKey->api_key,
+                $aiKey->model ?: $svc->defaultModel($aiKey->provider),
+                'Balas singkat dengan kata: pong',
+                null,
+                false,
+            ]);
 
             $aiKey->update(['last_error' => null, 'last_used_at' => now()]);
-            return back()->with('success', "Tes berhasil. Balasan: ".mb_substr(trim($reply), 0, 120));
+            return back()->with('success', 'Tes berhasil. Balasan: '.mb_substr(trim($reply), 0, 120));
         } catch (\Throwable $e) {
             $aiKey->update(['last_error' => mb_substr($e->getMessage(), 0, 500)]);
             return back()->with('error', 'Tes gagal: '.$e->getMessage());
         }
     }
+
+    /** AJAX: ambil daftar model live untuk provider tertentu (dipakai admin/ai.blade.php). */
+    public function liveModels(Request $request, AIService $ai)
+    {
+        $provider = (string) $request->query('provider', 'gemini');
+        if (! array_key_exists($provider, $ai->providers())) {
+            return response()->json(['ok' => false, 'message' => 'Provider tidak dikenal.'], 422);
+        }
+        if ($request->boolean('refresh')) {
+            $ai->clearModelCache($provider);
+        }
+        $models = $ai->listModels($provider);
+        return response()->json([
+            'ok'       => true,
+            'provider' => $provider,
+            'models'   => $models,
+            'count'    => count($models),
+            'source'   => $ai->lastUsedKey() ? 'live-cached' : 'live-or-fallback',
+        ]);
+    }
 }
+
+

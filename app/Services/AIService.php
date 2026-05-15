@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AiKey;
 use App\Models\Setting;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -15,11 +16,12 @@ use RuntimeException;
  *   - gemini      (Google Gemini)
  *   - openai      (OpenAI Chat Completions)
  *   - anthropic   (Anthropic Messages)
- *   - openrouter  (OpenRouter, kompatibel OpenAI)
- *   - groq        (Groq, kompatibel OpenAI)
+ *   - openrouter  (OpenRouter, OpenAI-compatible)
+ *   - groq        (Groq, OpenAI-compatible)
+ *   - hidepulsa   (HidePulsa AI, OpenAI-compatible: https://ai.hidepulsa.com/v1)
  *
- * Key disimpan di tabel ai_keys dengan kolom priority.
- * Saat key gagal/limit, akan otomatis berpindah ke key berikutnya.
+ * Daftar model tiap provider diambil LIVE dari endpoint masing-masing dan
+ * di-cache 10 menit. Jika gagal, fallback ke daftar statis di kelas ini.
  */
 class AIService
 {
@@ -45,7 +47,8 @@ class AIService
             'openai'     => 'gpt-4o-mini',
             'anthropic'  => 'claude-3-5-haiku-20241022',
             'openrouter' => 'openrouter/auto',
-            'groq'       => 'llama-3.1-70b-versatile',
+            'groq'       => 'llama-3.3-70b-versatile',
+            'hidepulsa'  => 'gpt-4o-mini',
             default      => 'gemini-2.0-flash',
         });
     }
@@ -119,24 +122,33 @@ class AIService
         foreach ($keys as $key) {
             try {
                 $model = $key->model ?: $this->defaultModel($provider);
-                $text = match ($provider) {
-                    'openai', 'openrouter', 'groq' => $this->callOpenAICompatible($provider, $key->api_key, $model, $prompt, $sys, $wantJson),
-                    'anthropic'                    => $this->callAnthropic($key->api_key, $model, $prompt, $sys, $wantJson),
-                    default                        => $this->callGemini($key->api_key, $model, $prompt, $sys, $wantJson),
-                };
-
+                $text = $this->callProvider($provider, $key->api_key, $model, $prompt, $sys, $wantJson);
                 $this->markSuccess($key);
                 $this->usedKey = $key;
                 return $text;
             } catch (\Throwable $e) {
-                $errors[] = "[{$key->label}] ".$e->getMessage();
-                $this->markFailure($key, $e->getMessage());
-                Log::warning("AI key gagal ({$key->label}): ".$e->getMessage());
-                // lanjut key berikutnya
+                $msg = $e->getMessage();
+                $errors[] = "[{$key->label}] ".$msg;
+
+                // Jika respons 429 / rate limit / quota — paksa key dianggap habis,
+                // sehingga rotasi otomatis pindah ke key berikutnya tanpa mencoba lagi.
+                $isRateLimit = str_contains($msg, ' 429') || stripos($msg, 'rate limit') !== false || stripos($msg, 'quota') !== false || stripos($msg, 'exceeded') !== false;
+                $this->markFailure($key, $msg, $isRateLimit);
+                Log::warning("AI key gagal ({$key->label}): ".$msg);
             }
         }
 
-        throw new RuntimeException('Semua API key gagal: '.implode(' | ', $errors));
+        throw new RuntimeException('Semua API key gagal. '.implode(' | ', $errors));
+    }
+
+    protected function callProvider(string $provider, string $apiKey, string $model, string $prompt, ?string $sys, bool $wantJson): string
+    {
+        return match ($provider) {
+            'anthropic' => $this->callAnthropic($apiKey, $model, $prompt, $sys, $wantJson),
+            'gemini'    => $this->callGemini($apiKey, $model, $prompt, $sys, $wantJson),
+            // Semua provider OpenAI-compatible (termasuk HidePulsa)
+            default     => $this->callOpenAICompatible($provider, $apiKey, $model, $prompt, $sys, $wantJson),
+        };
     }
 
     protected function markSuccess(AiKey $k): void
@@ -149,13 +161,18 @@ class AIService
         ])->save();
     }
 
-    protected function markFailure(AiKey $k, string $msg): void
+    protected function markFailure(AiKey $k, string $msg, bool $forceExhausted = false): void
     {
         if (! $k->exists) return;
-        $k->forceFill([
+        $patch = [
             'last_error'   => mb_substr($msg, 0, 500),
             'last_used_at' => now(),
-        ])->save();
+        ];
+        if ($forceExhausted && $k->quota_limit) {
+            // Tandai habis sampai periode reset berikutnya — tidak akan dipakai lagi.
+            $patch['quota_used'] = $k->quota_limit;
+        }
+        $k->forceFill($patch)->save();
     }
 
     /* ============================================================
@@ -185,11 +202,7 @@ class AIService
 
     protected function callOpenAICompatible(string $provider, string $apiKey, string $model, string $prompt, ?string $sys, bool $wantJson): string
     {
-        $url = match ($provider) {
-            'openrouter' => 'https://openrouter.ai/api/v1/chat/completions',
-            'groq'       => 'https://api.groq.com/openai/v1/chat/completions',
-            default      => 'https://api.openai.com/v1/chat/completions',
-        };
+        $url = $this->openAiCompletionsUrl($provider);
 
         $messages = [];
         if ($sys) $messages[] = ['role' => 'system', 'content' => $sys];
@@ -235,26 +248,127 @@ class AIService
     }
 
     /* ============================================================
-     * Listing models (untuk Gemini saja, lainnya pakai daftar manual)
+     * Endpoint utilitas
+     * ============================================================ */
+    protected function openAiCompletionsUrl(string $provider): string
+    {
+        return match ($provider) {
+            'openrouter' => 'https://openrouter.ai/api/v1/chat/completions',
+            'groq'       => 'https://api.groq.com/openai/v1/chat/completions',
+            'hidepulsa'  => 'https://ai.hidepulsa.com/v1/chat/completions',
+            default      => 'https://api.openai.com/v1/chat/completions',
+        };
+    }
+
+    protected function modelsListUrl(string $provider): ?string
+    {
+        return match ($provider) {
+            'openai'     => 'https://api.openai.com/v1/models',
+            'openrouter' => 'https://openrouter.ai/api/v1/models',
+            'groq'       => 'https://api.groq.com/openai/v1/models',
+            'hidepulsa'  => 'https://ai.hidepulsa.com/v1/models',
+            'anthropic'  => 'https://api.anthropic.com/v1/models',
+            'gemini'     => rtrim((string) config('services.gemini.base_url'), '/'),
+            default      => null,
+        };
+    }
+
+    /* ============================================================
+     * Listing models — LIVE dari endpoint provider, fallback statis
      * ============================================================ */
     public function listModels(string $provider = 'gemini'): array
     {
-        if ($provider !== 'gemini') return $this->staticModelList($provider);
+        // Cache 10 menit per provider supaya halaman admin responsif.
+        return Cache::remember("ai.models.$provider", 600, function () use ($provider) {
+            try {
+                $live = $this->fetchLiveModels($provider);
+                if (! empty($live)) return $live;
+            } catch (\Throwable $e) {
+                Log::info("listModels[$provider] fallback statis: ".$e->getMessage());
+            }
+            return $this->staticModelList($provider);
+        });
+    }
 
-        $key = $this->activeKeysFor('gemini')->first();
-        $apiKey = $key ? $key->api_key : (string) (Setting::get('gemini.api_key') ?? config('services.gemini.api_key', ''));
-        if (! $apiKey) return $this->staticModelList('gemini');
+    /** Coba ambil daftar model dari endpoint provider. */
+    protected function fetchLiveModels(string $provider): array
+    {
+        $apiKey = $this->firstApiKeyFor($provider);
+        if (! $apiKey) return [];
 
-        try {
-            $url = rtrim((string) config('services.gemini.base_url'), '/').'?key='.$apiKey;
-            $res = Http::timeout(20)->acceptJson()->get($url);
-            if (! $res->successful()) return $this->staticModelList('gemini');
+        $url = $this->modelsListUrl($provider);
+        if (! $url) return [];
+
+        // Setup request per provider
+        $req = Http::timeout(15)->acceptJson();
+        switch ($provider) {
+            case 'gemini':
+                $url .= '?key='.$apiKey;
+                break;
+            case 'anthropic':
+                $req = $req->withHeaders([
+                    'x-api-key'         => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                ]);
+                break;
+            default: // openai, openrouter, groq, hidepulsa
+                $req = $req->withToken($apiKey);
+        }
+
+        $res = $req->get($url);
+        if (! $res->successful()) return [];
+
+        // Parse: format Gemini { models: [{name: "models/...", supportedGenerationMethods: [...]}] }
+        if ($provider === 'gemini') {
             return collect($res->json('models', []))
-                ->map(fn ($m) => str_replace('models/', '', $m['name'] ?? ''))
-                ->filter(fn ($n) => $n && str_contains($n, 'gemini'))
-                ->values()->all();
-        } catch (\Throwable $e) {
-            return $this->staticModelList('gemini');
+                ->filter(fn ($m) => in_array('generateContent', $m['supportedGenerationMethods'] ?? [], true))
+                ->map(fn ($m) => str_replace('models/', '', (string) ($m['name'] ?? '')))
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        // Format Anthropic { data: [{id: "claude-..."}] }
+        if ($provider === 'anthropic') {
+            return collect($res->json('data', []))
+                ->map(fn ($m) => (string) ($m['id'] ?? ''))
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        // Format OpenAI-compatible { data: [{id: "..."}] }
+        return collect($res->json('data', []))
+            ->map(fn ($m) => (string) ($m['id'] ?? ''))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /** Ambil 1 API key aktif (atau legacy untuk gemini) untuk provider tertentu. */
+    protected function firstApiKeyFor(string $provider): ?string
+    {
+        $key = $this->activeKeysFor($provider)->first();
+        if ($key) return $key->api_key;
+
+        // Fallback hanya untuk gemini (.env legacy)
+        if ($provider === 'gemini') {
+            $legacy = (string) (Setting::get('gemini.api_key') ?? config('services.gemini.api_key', ''));
+            return $legacy !== '' ? $legacy : null;
+        }
+
+        // Untuk provider lain, coba pakai key apa pun di tabel (termasuk yang quota habis), jika ada.
+        return AiKey::where('provider', $provider)->orderBy('priority')->value('api_key');
+    }
+
+    public function clearModelCache(?string $provider = null): void
+    {
+        if ($provider) {
+            Cache::forget("ai.models.$provider");
+            return;
+        }
+        foreach (array_keys($this->providers()) as $p) {
+            Cache::forget("ai.models.$p");
         }
     }
 
@@ -279,27 +393,19 @@ class AIService
                 'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile',
                 'llama-3.1-8b-instant', 'mixtral-8x7b-32768',
             ],
+            'hidepulsa'  => [
+                'gpt-4o-mini', 'gpt-4o', 'claude-3-5-sonnet', 'gemini-2.0-flash',
+            ],
             default      => [
-                // Gemini — termasuk seri terbaru (3.x) sampai legacy (1.5).
-                // Pengguna juga bebas mengetik nama model lain (mis. preview / experimental).
-                'gemini-3.0-pro',
-                'gemini-3.0-flash',
-                'gemini-3.0-flash-lite',
-                'gemini-2.5-pro',
-                'gemini-2.5-flash',
-                'gemini-2.5-flash-lite',
-                'gemini-2.0-pro',
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
-                'gemini-1.5-pro',
-                'gemini-1.5-flash',
-                'gemini-1.5-flash-8b',
+                'gemini-3.0-pro', 'gemini-3.0-flash', 'gemini-3.0-flash-lite',
+                'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+                'gemini-2.0-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+                'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b',
             ],
         };
     }
 
     public function providers(): array
-
     {
         return [
             'gemini'     => 'Google Gemini',
@@ -307,6 +413,7 @@ class AIService
             'anthropic'  => 'Anthropic Claude',
             'openrouter' => 'OpenRouter',
             'groq'       => 'Groq',
+            'hidepulsa'  => 'HidePulsa AI',
         ];
     }
 }

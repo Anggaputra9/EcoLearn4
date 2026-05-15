@@ -26,8 +26,8 @@
 
         {{-- ============= TAB: UMUM ============= --}}
         <div x-show="tab==='general'" x-cloak class="grid lg:grid-cols-3 gap-4 sm:gap-6"
-             x-data="{ provider: '{{ $provider }}', model: '{{ $model }}' }">
-            <div class="lg:col-span-2 glass p-4 sm:p-6">
+             x-data="aiGeneral({ provider: '{{ $provider }}', model: '{{ $model }}' })" x-init="initial()">
+            <div class="lg:col-span-2 glass p-5 sm:p-7">
                 <div class="flex items-center gap-3 mb-5">
                     <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 grid place-items-center text-white shrink-0">
                         <x-icon name="sparkles" class="w-5 h-5"/>
@@ -43,7 +43,7 @@
 
                     <div>
                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Provider</label>
-                        <select name="provider" x-model="provider" class="input-glass">
+                        <select name="provider" x-model="provider" @change="loadModels()" class="input-glass">
                             @foreach($providers as $p => $name)
                                 <option value="{{ $p }}" @selected($provider === $p)>{{ $name }}</option>
                             @endforeach
@@ -51,27 +51,37 @@
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
-                            Model Default
-                            <span class="text-xs font-normal text-slate-400">(pilih dari daftar atau ketik nama model kustom)</span>
-                        </label>
+                        <div class="flex items-end justify-between gap-2 mb-1">
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                                Model Default
+                                <span class="text-xs font-normal text-slate-400 hidden sm:inline">(pilih dari daftar atau ketik nama model kustom)</span>
+                            </label>
+                            <button type="button" class="btn-ghost text-xs px-2 py-1" @click="loadModels(true)" :disabled="loading">
+                                <x-icon name="history" class="w-3.5 h-3.5"/>
+                                <span x-text="loading ? 'Memuat…' : 'Muat ulang'"></span>
+                            </button>
+                        </div>
 
-                        @foreach($staticLists as $p => $list)
-                            <datalist id="models-{{ $p }}">
-                                @foreach($list as $m)
-                                    <option value="{{ $m }}"></option>
-                                @endforeach
-                            </datalist>
-                        @endforeach
+                        <datalist id="models-live">
+                            <template x-for="m in models" :key="m">
+                                <option :value="m"></option>
+                            </template>
+                        </datalist>
 
                         <input name="model"
                                x-model="model"
-                               :list="'models-' + provider"
+                               list="models-live"
                                required autocomplete="off"
                                placeholder="contoh: gemini-3.0-pro"
                                class="input-glass font-mono text-sm">
+
                         <p class="mt-1 text-xs text-slate-500">
-                            Bebas ketik nama model preview/experimental. Setiap API Key juga boleh menimpa model ini di tab API Key Pool.
+                            <span x-show="!loading && models.length > 0">
+                                <span class="text-emerald-600">●</span>
+                                <span x-text="models.length"></span> model dimuat live dari endpoint provider.
+                            </span>
+                            <span x-show="loading">Memuat daftar model…</span>
+                            <span x-show="error" class="text-rose-600" x-text="error"></span>
                         </p>
                     </div>
 
@@ -87,16 +97,18 @@
                 </form>
             </div>
 
+
             <div class="glass p-4 sm:p-6">
                 <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3 flex items-center gap-2">
                     <x-icon name="shield" class="w-5 h-5 text-emerald-600"/> Catatan
                 </h3>
                 <ul class="text-sm text-slate-600 dark:text-slate-300 space-y-2 list-disc pl-5">
-                    <li>Banyak API key bisa digabung untuk satu provider; sistem otomatis berpindah jika satu kehabisan kuota.</li>
-                    <li>Atur prioritas key di tab <span class="font-semibold">API Key Pool</span>.</li>
-                    <li>Model Gemini didukung sampai seri <span class="font-mono">gemini-3.0-*</span>; Anda juga bisa mengetik model preview/experimental terbaru langsung.</li>
-                    <li>Provider yang didukung: Gemini, OpenAI, Anthropic, OpenRouter, Groq.</li>
+                    <li>Daftar model di-fetch <span class="font-semibold">live</span> dari endpoint provider (cache 10 menit). Klik <span class="font-medium">Muat ulang</span> untuk paksa refresh.</li>
+                    <li>Saat respons <span class="font-mono">429</span> / kuota habis, sistem otomatis tandai key sebagai exhausted dan pindah ke key berikutnya hingga periode reset.</li>
+                    <li>Atur prioritas key di tab <span class="font-semibold">API Key Pool</span>. Kuota & periode reset dipasang otomatis sesuai tier free tiap provider.</li>
+                    <li>Provider yang didukung: Gemini, OpenAI, Anthropic, OpenRouter, Groq, dan <span class="font-medium">HidePulsa AI</span> (<span class="font-mono">ai.hidepulsa.com/v1</span>, OpenAI-compatible).</li>
                 </ul>
+
             </div>
         </div>
 
@@ -238,5 +250,33 @@
                 },
             }
         }
+
+        function aiGeneral({ provider, model }) {
+            return {
+                provider, model,
+                models: [],
+                loading: false,
+                error: '',
+                initial() { this.loadModels(false); },
+                async loadModels(forceRefresh = false) {
+                    this.loading = true;
+                    this.error = '';
+                    try {
+                        const url = '{{ url('/admin/ai/models') }}?provider=' + encodeURIComponent(this.provider) + (forceRefresh ? '&refresh=1' : '');
+                        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                        const data = await res.json();
+                        if (!data.ok) throw new Error(data.message || 'Gagal memuat model.');
+                        this.models = data.models || [];
+                        // Jika model saat ini bukan dari daftar, tetap dipertahankan (boleh kustom).
+                    } catch (e) {
+                        this.models = [];
+                        this.error = e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+            }
+        }
     </script>
+
 </x-app-layout>

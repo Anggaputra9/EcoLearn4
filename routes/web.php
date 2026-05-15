@@ -87,6 +87,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/ai-keys/{aiKey}/test',         [AiKeyController::class, 'test']);
         Route::post('/ai-keys/{aiKey}/reset-quota',  [AiKeyController::class, 'resetQuota']);
 
+        // AJAX: daftar model live per-provider untuk autocomplete admin/ai.
+        Route::get('/ai/models', [AiKeyController::class, 'liveModels'])->name('admin.ai.models');
+
+
         // === Email & Notifikasi (gabungan: provider mail + Mail Key Pool) ===
         Route::get('/email',          [MailController::class, 'hub'])->name('admin.email');
         Route::put('/email/general',  [MailController::class, 'update'])->name('admin.email.update');

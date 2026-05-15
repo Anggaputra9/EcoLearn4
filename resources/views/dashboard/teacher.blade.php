@@ -5,9 +5,10 @@
                 <h2 class="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 truncate">Halo, {{ auth()->user()->name }}</h2>
                 <p class="text-xs sm:text-sm text-slate-500">Selamat datang kembali di ruang kelas digital Anda.</p>
             </div>
-            <a href="{{ route('teacher.materials.create') }}" class="btn-primary text-sm">
+            <a href="{{ route('teacher.index') }}" class="btn-primary text-sm">
                 <x-icon name="sparkles" class="w-4 h-4"/> <span class="hidden sm:inline">Buat Materi (AI)</span><span class="sm:hidden">Buat Materi</span>
             </a>
+
         </div>
     </x-slot>
 

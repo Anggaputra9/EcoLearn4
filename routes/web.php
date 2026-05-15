@@ -123,8 +123,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Materi
         Route::post('/materials/generate-ajax',         [TeacherController::class, 'generateMaterialAjax'])->name('materials.generate.ajax');
         Route::post('/materials',                       [TeacherController::class, 'storeMaterial'])->name('materials.store');
-        Route::get('/materials/create',                 [TeacherController::class, 'createMaterial'])->name('materials.create');
+        // Halaman create lama dihapus — workflow sekarang pakai modal di /teacher.
+        // Rute disisakan agar link/bookmark lama tidak 500; arahkan ke index.
+        Route::get('/materials/create',                 fn () => redirect()->route('teacher.index'))->name('materials.create');
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
+
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');
         Route::delete('/materials/{material}',          [TeacherController::class, 'destroyMaterial'])->name('materials.destroy');

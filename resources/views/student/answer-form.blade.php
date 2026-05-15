@@ -19,7 +19,8 @@
             @endif
         </div>
 
-        <form method="POST" action="{{ route('student.questions.submit', $question) }}" class="glass p-6 space-y-4">
+        <form method="POST" action="{{ route('student.questions.submit', $question) }}" class="glass p-6 space-y-4"
+              data-ai-loading="AI sedang mengoreksi jawaban Anda…">
             @csrf
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Tulis Esai Anda (min. 20 karakter)</label>

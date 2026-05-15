@@ -129,6 +129,7 @@
                 async generate() {
                     if (!this.form.title || !this.form.topic) { this.error = 'Isi judul & topik dulu.'; return; }
                     this.error = ''; this.loading = true;
+                    window.aiLoader?.show('AI sedang menyusun materi pembelajaran…');
                     try {
                         const res = await fetch('{{ route('teacher.materials.generate.ajax') }}', {
                             method: 'POST',
@@ -142,7 +143,10 @@
                         this.form.content = data.content;
                     } catch (e) {
                         this.error = e.message;
-                    } finally { this.loading = false; }
+                    } finally {
+                        this.loading = false;
+                        window.aiLoader?.hide();
+                    }
                 },
             }
         }

@@ -235,7 +235,8 @@
 
     {{-- Modal Generate Soal AI --}}
     <x-modal-glass name="gen-q" title="Generate Soal dengan AI" max-width="md">
-        <form method="POST" action="{{ route('teacher.questions.generate', $material) }}" class="space-y-4">
+        <form method="POST" action="{{ route('teacher.questions.generate', $material) }}" class="space-y-4"
+              data-ai-loading="AI sedang menyusun soal sesuai materi…">
             @csrf
             <p class="text-sm text-slate-600 dark:text-slate-300">AI akan menyusun soal berdasarkan konten materi ini.</p>
 

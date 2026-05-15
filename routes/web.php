@@ -107,6 +107,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Materi
         Route::post('/materials/generate-ajax',         [TeacherController::class, 'generateMaterialAjax'])->name('materials.generate.ajax');
         Route::post('/materials',                       [TeacherController::class, 'storeMaterial'])->name('materials.store');
+        Route::get('/materials/create',                 [TeacherController::class, 'createMaterial'])->name('materials.create');
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');

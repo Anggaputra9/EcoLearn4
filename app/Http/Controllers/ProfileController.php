@@ -85,4 +85,23 @@ class ProfileController extends Controller
         $request->user()->update(['theme' => $data['theme']]);
         return response()->json(['ok' => true, 'theme' => $data['theme']]);
     }
+
+    /**
+     * Aktif/nonaktifkan OTP login (2FA via email) untuk akun ini.
+     * Dilindungi dengan konfirmasi password agar tidak bisa diubah lewat XSRF
+     * iseng bila session ter-hijack tanpa kredensial.
+     */
+    public function updateOtpLogin(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'enabled'          => 'required|boolean',
+            'current_password' => 'required|current_password',
+        ]);
+
+        $request->user()->update(['otp_login_enabled' => (bool) $data['enabled']]);
+
+        return back()->with('success', $data['enabled']
+            ? 'Verifikasi 2 langkah (OTP email) diaktifkan.'
+            : 'Verifikasi 2 langkah (OTP email) dimatikan.');
+    }
 }

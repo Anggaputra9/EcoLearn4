@@ -21,6 +21,7 @@ class User extends Authenticatable
         'role_id',
         'profile_photo_path',
         'theme',
+        'otp_login_enabled',
     ];
 
     protected $appends = ['profile_photo_url'];
@@ -62,8 +63,9 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'email_verified_at'  => 'datetime',
+            'password'           => 'hashed',
+            'otp_login_enabled'  => 'boolean',
         ];
     }
 }

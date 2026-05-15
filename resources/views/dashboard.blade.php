@@ -8,7 +8,7 @@
             <div class="bg-white rounded-2xl shadow-sm border border-emerald-100 p-8">
                 <p class="text-gray-700 leading-relaxed">
                     Halo, <span class="font-semibold text-emerald-700">{{ auth()->user()->name }}</span>.
-                    Pilih menu di bagian atas untuk mulai menggunakan platform pembelajaran esai ekoteologi otomatis.
+                    Pilih menu di bagian atas untuk mulai menggunakan platform pembelajaran ekoteologi otomatis.
                 </p>
             </div>
         </div>

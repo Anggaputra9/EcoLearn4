@@ -47,40 +47,57 @@
 
             @if($exam->allow_review_answer && $canSeeResult)
                 <div class="glass p-6">
-                    <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Detail Jawaban</h3>
+                    <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-1">Ringkasan Jawaban</h3>
+                    <p class="text-xs text-slate-500 mb-4">Hanya menampilkan benar/salah & skor — kunci jawaban tidak ditampilkan.</p>
                     <div class="space-y-4">
                         @foreach($attempt->submissions as $sub)
-                            @php $q = $sub->question; @endphp
+                            @php
+                                $q = $sub->question;
+                                $isMcq = $q?->isMcq();
+                                $isCorrect = $isMcq
+                                    ? ($sub->selected_option !== null
+                                        && strtoupper((string) $sub->selected_option) === strtoupper((string) $q?->correct_option))
+                                    : null;
+                            @endphp
                             <div class="rounded-xl bg-white/50 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-4">
-                                <div class="flex items-center gap-2 mb-1">
+                                <div class="flex items-center gap-2 mb-1 flex-wrap">
                                     <p class="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300">Soal</p>
-                                    @if($q?->isMcq())
+                                    @if($isMcq)
                                         <span class="badge badge-violet text-[10px]">Pilihan Ganda</span>
                                     @else
                                         <span class="badge badge-emerald text-[10px]">Esai</span>
                                     @endif
+
+                                    @if($isMcq && $sub->status === 'graded')
+                                        @if($isCorrect)
+                                            <span class="badge badge-emerald text-[10px]">Benar</span>
+                                        @else
+                                            <span class="badge badge-rose text-[10px]">Salah</span>
+                                        @endif
+                                    @endif
                                 </div>
                                 <p class="text-slate-800 dark:text-slate-100 leading-relaxed">{{ $q?->prompt_text }}</p>
 
-                                @if($q?->isMcq())
-                                    <ul class="mt-3 space-y-1.5">
-                                        @foreach($q->normalizedOptions() as $opt)
-                                            <li class="flex items-center gap-2 text-sm">
+                                @if($isMcq)
+                                    {{-- Hanya pilihan siswa yang ditampilkan; kunci jawaban tidak dibocorkan. --}}
+                                    @php
+                                        $picked = collect($q?->normalizedOptions() ?? [])
+                                            ->firstWhere('key', $sub->selected_option);
+                                    @endphp
+                                    <div class="mt-3 text-sm">
+                                        <p class="text-xs uppercase font-semibold text-slate-500 mb-1">Pilihan Anda</p>
+                                        @if($picked)
+                                            <div class="flex items-center gap-2">
                                                 <span class="w-6 h-6 grid place-items-center rounded-full text-xs font-bold shrink-0
-                                                    @if($opt['key'] === $q->correct_option) bg-emerald-500 text-white
-                                                    @elseif($opt['key'] === $sub->selected_option) bg-rose-500 text-white
-                                                    @else bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300
-                                                    @endif">{{ $opt['key'] }}</span>
-                                                <span>{{ $opt['text'] }}</span>
-                                                @if($opt['key'] === $q->correct_option)
-                                                    <span class="badge badge-emerald text-[10px]">Kunci</span>
-                                                @endif
-                                                @if($opt['key'] === $sub->selected_option && $opt['key'] !== $q->correct_option)
-                                                    <span class="badge badge-rose text-[10px]">Pilihan Anda</span>
-                                                @endif
-                                            </li>
-                                        @endforeach
-                                    </ul>
+                                                    {{ $isCorrect ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white' }}">
+                                                    {{ $picked['key'] }}
+                                                </span>
+                                                <span class="text-slate-700 dark:text-slate-200">{{ $picked['text'] }}</span>
+                                            </div>
+                                        @else
+                                            <p class="text-slate-500 italic">Tidak menjawab.</p>
+                                        @endif
+                                    </div>
                                 @else
                                     <p class="mt-3 text-xs uppercase font-semibold text-slate-500">Jawaban Anda</p>
                                     <p class="mt-1 text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{{ $sub->answer_text }}</p>
@@ -88,10 +105,14 @@
 
                                 @if($sub->status === 'graded')
                                     <div class="mt-3 flex items-center gap-2 flex-wrap">
-                                        <span class="badge badge-emerald">Skor: {{ $sub->score }}/{{ $q?->max_score ?? 100 }}</span>
+                                        <span class="badge {{ ($sub->score ?? 0) > 0 ? 'badge-emerald' : 'badge-rose' }}">
+                                            Skor: {{ $sub->score }}/{{ $q?->max_score ?? 100 }}
+                                        </span>
                                         @if($sub->manually_graded) <span class="badge badge-violet">Dikoreksi guru</span> @endif
                                     </div>
-                                    @if($sub->feedback)
+                                    {{-- Esai: feedback tetap ditampilkan (berisi penilaian, bukan kunci) --}}
+                                    {{-- MCQ: feedback otomatis bisa berisi kunci, jadi disembunyikan kecuali dikoreksi guru. --}}
+                                    @if($sub->feedback && (! $isMcq || $sub->manually_graded))
                                         <p class="mt-2 text-sm text-slate-700 dark:text-slate-200 italic">"{{ $sub->feedback }}"</p>
                                     @endif
                                 @endif

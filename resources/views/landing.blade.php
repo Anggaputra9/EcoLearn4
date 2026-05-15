@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Eko-Scribe • Pembelajaran Esai Ekoteologi Berbasis AI</title>
-    <meta name="description" content="Platform pembelajaran esai otomatis bertema ekoteologi. Guru membuat materi & soal dengan AI, siswa mengerjakan esai, dan mendapatkan koreksi AI seketika.">
+    <meta name="description" content="Platform pembelajaran otomatis bertema ekoteologi. Guru membuat materi & soal dengan AI, siswa mengerjakan esai, dan mendapatkan koreksi AI seketika.">
 
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&display=swap" rel="stylesheet"/>
@@ -43,7 +43,7 @@
                     <x-icon name="sparkles" class="w-3 h-3"/> Powered by Google Gemini
                 </span>
                 <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-tight">
-                    Pembelajaran Esai
+                    Pembelajaran
                     <span class="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 bg-clip-text text-transparent">
                         Ekoteologi
                     </span>

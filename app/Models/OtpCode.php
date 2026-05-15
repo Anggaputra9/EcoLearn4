@@ -7,15 +7,18 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
- * Kode OTP untuk verifikasi email saat pendaftaran.
+ * Kode OTP untuk verifikasi email (registrasi, login 2FA, reset, dll).
  *
  * Cara pakai singkat:
- *   $otp = OtpCode::issue($email, 'register');   // hasilkan kode 6 digit + simpan hash
- *   $code = $otp->plain;                          // kode plaintext untuk dikirim email
- *   OtpCode::verify($email, '123456', 'register') // -> true | false (sekaligus tandai verified)
+ *   $otp = OtpCode::issue($email, 'register');     // hasilkan kode 6 digit + simpan hash
+ *   $code = $otp->plain;                            // kode plaintext untuk dikirim email
+ *   OtpCode::verify($email, '123456', 'register')   // -> true | false (sekaligus tandai verified)
  */
 class OtpCode extends Model
 {
+    /** Maksimum percobaan salah sebelum kode dikunci. */
+    public const MAX_ATTEMPTS = 5;
+
     protected $fillable = [
         'email', 'purpose', 'code_hash', 'attempts', 'expires_at', 'verified_at',
     ];
@@ -31,11 +34,11 @@ class OtpCode extends Model
 
     public static function issue(string $email, string $purpose = 'register', int $ttlMinutes = 10): self
     {
-        // Hapus OTP lama yang belum diverifikasi untuk email+purpose ini
+        // Hapus OTP lama (verified atau belum) untuk email+purpose ini agar tidak menumpuk.
+        // Tujuannya: hanya satu kode aktif sekaligus, dan reset counter attempts.
         static::query()
             ->where('email', $email)
             ->where('purpose', $purpose)
-            ->whereNull('verified_at')
             ->delete();
 
         $code = (string) random_int(100000, 999999);
@@ -50,34 +53,46 @@ class OtpCode extends Model
         return $otp;
     }
 
+    /**
+     * Verifikasi kode. Hanya kode yang SALAH yang menambah counter attempts,
+     * sehingga kode benar tidak ikut menghabiskan kuota percobaan.
+     */
     public static function verify(string $email, string $code, string $purpose = 'register'): bool
     {
+        $code = trim($code);
+        if (! preg_match('/^\d{6}$/', $code)) return false;
+
         $otp = static::query()
             ->where('email', $email)
             ->where('purpose', $purpose)
             ->whereNull('verified_at')
-            ->latest()
+            ->latest('id')
             ->first();
 
         if (! $otp) return false;
         if ($otp->expires_at->isPast()) return false;
-        if ($otp->attempts >= 5) return false;
+        if ($otp->attempts >= self::MAX_ATTEMPTS) return false;
 
-        $otp->increment('attempts');
+        if (! Hash::check($code, $otp->code_hash)) {
+            // Hanya gagal yang menambah attempts.
+            $otp->increment('attempts');
+            return false;
+        }
 
-        if (! Hash::check($code, $otp->code_hash)) return false;
-
-        $otp->update(['verified_at' => now()]);
+        $otp->forceFill(['verified_at' => now()])->save();
         return true;
     }
 
-    public static function markPurposeVerified(string $email, string $purpose = 'register'): bool
+    /**
+     * Cek apakah purpose sudah pernah diverifikasi dalam window waktu tertentu.
+     */
+    public static function markPurposeVerified(string $email, string $purpose = 'register', int $withinMinutes = 30): bool
     {
         return (bool) static::query()
             ->where('email', $email)
             ->where('purpose', $purpose)
             ->whereNotNull('verified_at')
-            ->where('verified_at', '>=', now()->subMinutes(30))
+            ->where('verified_at', '>=', now()->subMinutes($withinMinutes))
             ->exists();
     }
 

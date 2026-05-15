@@ -47,6 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/profile/theme', [ProfileController::class, 'updateTheme'])->name('profile.theme');
+    Route::post('/profile/otp-login', [ProfileController::class, 'updateOtpLogin'])->name('profile.otpLogin');
 
     // Diskusi (semua role yang punya akses materi)
     Route::post('/discussions/{material}', [DiscussionController::class, 'store'])->name('discussions.store');
@@ -152,6 +153,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Ujian (per materi)
         Route::post('/materials/{material}/exams', [ExamController::class, 'store'])->name('exams.store');
+        // Index ujian global guru (lintas materi/kelas)
+        Route::get('/exams',                       [ExamController::class, 'index'])->name('exams.index');
         Route::get('/exams/{exam}',                [ExamController::class, 'show'])->name('exams.show');
         Route::put('/exams/{exam}',                [ExamController::class, 'update'])->name('exams.update');
         Route::delete('/exams/{exam}',             [ExamController::class, 'destroy'])->name('exams.destroy');
@@ -183,6 +186,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/classrooms/{classroom}/leave',  [StudentClassroomController::class, 'leave'])->name('classrooms.leave');
 
         // Ujian
+        Route::get('/exams',                                 [ExamRunController::class, 'index'])->name('exams.index');
         Route::get('/exams/{exam}',                          [ExamRunController::class, 'lobby'])->name('exams.lobby');
         Route::post('/exams/{exam}/start',                   [ExamRunController::class, 'start'])->name('exams.start');
         Route::get('/exams/{exam}/run',                      [ExamRunController::class, 'run'])->name('exams.run');

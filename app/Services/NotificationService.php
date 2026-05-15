@@ -67,6 +67,28 @@ class NotificationService
         );
     }
 
+    /**
+     * Kirim kode OTP verifikasi email (untuk pendaftaran akun baru).
+     */
+    public function sendOtpCode(string $email, string $name, string $code, int $ttlMinutes = 10): bool
+    {
+        $appName = e(config('app.name', 'Eko-Scribe'));
+        $codeHtml = "<div style='font-size:32px;font-weight:800;letter-spacing:10px;color:#047857;background:#ecfdf5;padding:14px 20px;border-radius:12px;text-align:center;font-family:Menlo,Consolas,monospace'>".e($code)."</div>";
+
+        return $this->mail->sendHtml(
+            [$email => $name],
+            "Kode Verifikasi {$appName}",
+            $this->renderTemplate(
+                heading: 'Kode verifikasi pendaftaran Anda',
+                body: "<p>Halo <strong>".e($name)."</strong>,</p>".
+                      "<p>Berikut kode OTP untuk menyelesaikan pendaftaran akun Anda di {$appName}:</p>".
+                      $codeHtml.
+                      "<p style='margin-top:16px;color:#64748b;font-size:13px'>Kode berlaku <strong>{$ttlMinutes} menit</strong>. Jangan bagikan kode ini ke siapa pun.</p>".
+                      "<p style='color:#64748b;font-size:13px'>Jika Anda tidak meminta pendaftaran, abaikan email ini.</p>",
+            ),
+        );
+    }
+
     protected function renderTemplate(string $heading, string $body, ?array $cta = null): string
     {
         $appName = e(config('app.name', 'Eko-Scribe'));

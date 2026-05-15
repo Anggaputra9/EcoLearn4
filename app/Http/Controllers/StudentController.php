@@ -6,8 +6,10 @@ use App\Models\Material;
 use App\Models\Question;
 use App\Models\Submission;
 use App\Services\AIService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -100,6 +102,21 @@ class StudentController extends Controller
         abort_unless($submission->user_id === Auth::id(), 403);
         $submission->load(['question.material']);
         return view('student.submission-show', compact('submission'));
+    }
+
+    /**
+     * Download materi sebagai PDF (untuk siswa).
+     */
+    public function downloadMaterialPdf(Material $material): Response
+    {
+        $this->ensureCanAccess($material);
+        $material->load(['teacher', 'classroom']);
+
+        $pdf = Pdf::loadView('teacher.material-pdf', ['material' => $material])
+            ->setPaper('a4', 'portrait');
+
+        $filename = 'Materi-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
+        return $pdf->download($filename);
     }
 
     protected function gradeWithAi(AIService $ai, Material $material, Question $question, string $answer): array

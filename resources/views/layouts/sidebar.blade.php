@@ -84,12 +84,11 @@
                     <p class="text-xs text-slate-500 dark:text-slate-400 truncate">{{ $u->email }}</p>
                 </div>
             </a>
-            <form method="POST" action="{{ route('logout') }}" class="mt-1">
-                @csrf
-                <button class="sidebar-link w-full text-left text-rose-600 hover:bg-rose-50/60 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-900/30">
-                    <x-icon name="logout" class="w-5 h-5"/> <span>Keluar</span>
-                </button>
-            </form>
+            <button type="button"
+                    @click="$dispatch('open-modal', 'sidebar-logout')"
+                    class="sidebar-link w-full text-left text-rose-600 hover:bg-rose-50/60 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-900/30 mt-1">
+                <x-icon name="logout" class="w-5 h-5"/> <span>Keluar</span>
+            </button>
         </div>
     </div>
 </aside>

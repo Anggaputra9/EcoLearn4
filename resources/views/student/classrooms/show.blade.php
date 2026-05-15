@@ -5,10 +5,9 @@
                 <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100">{{ $classroom->name }}</h2>
                 <p class="text-sm text-slate-500">{{ $classroom->subject ?: '—' }} · oleh {{ $classroom->teacher->name }}</p>
             </div>
-            <form method="POST" action="{{ route('student.classrooms.leave', $classroom) }}">
-                @csrf @method('DELETE')
-                <button class="btn-secondary"><x-icon name="logout" class="w-4 h-4"/> Keluar</button>
-            </form>
+            <button type="button" class="btn-secondary" @click="$dispatch('open-modal', 'class-leave')">
+                <x-icon name="logout" class="w-4 h-4"/> Keluar
+            </button>
         </div>
     </x-slot>
 
@@ -34,4 +33,14 @@
             </div>
         @endif
     </div>
+
+    <x-confirm-modal
+        name="class-leave"
+        title="Keluar dari Kelas"
+        tone="danger"
+        icon="logout"
+        confirm-text="Ya, Keluar"
+        :action="route('student.classrooms.leave', $classroom)"
+        method="DELETE"
+        :message="'Anda akan keluar dari kelas <strong>'.e($classroom->name).'</strong>. Untuk bergabung kembali Anda butuh kode kelas dari guru.'" />
 </x-app-layout>

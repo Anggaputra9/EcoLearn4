@@ -98,16 +98,31 @@ class SubmissionController extends Controller
         return back()->with('success', 'Hasil koreksi diperbarui.');
     }
 
+    /**
+     * Hitung ulang total skor attempt secara AKUMULATIF.
+     * total = sum(score per soal) / sum(max_score per soal) × 100.
+     */
     protected function recomputeAttemptTotal(?int $attemptId): void
     {
         if (! $attemptId) return;
-        $attempt = ExamAttempt::find($attemptId);
-        if (! $attempt) return;
-        $subs = $attempt->submissions;
-        $graded = $subs->whereNotNull('score');
-        if ($graded->count() === 0) return;
+        $attempt = ExamAttempt::with('exam.material.questions')->find($attemptId);
+        if (! $attempt || ! $attempt->exam || ! $attempt->exam->material) return;
+
+        $questions = $attempt->exam->material->questions;
+        $subs = $attempt->submissions->keyBy('question_id');
+
+        $earned = 0; $max = 0;
+        foreach ($questions as $q) {
+            $max += (int) $q->max_score;
+            $sub = $subs->get($q->id);
+            if ($sub && $sub->score !== null) {
+                $earned += (int) $sub->score;
+            }
+        }
+
+        if ($max <= 0) return;
         $attempt->update([
-            'total_score' => (int) round($graded->avg('score')),
+            'total_score' => (int) round(($earned / $max) * 100),
             'max_score'   => 100,
         ]);
     }

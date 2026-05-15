@@ -61,14 +61,15 @@
                     </form>
                 </x-modal-glass>
 
-                <x-modal-glass name="cl-del-{{ $c->id }}" title="Hapus Changelog" max-width="md">
-                    <p class="text-slate-600">Hapus catatan rilis <span class="font-semibold">v{{ $c->version }}</span>?</p>
-                    <form method="POST" action="{{ url('/admin/changelogs/'.$c->id) }}" class="flex justify-end gap-2 mt-5">
-                        @csrf @method('DELETE')
-                        <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'cl-del-{{ $c->id }}')">Batal</button>
-                        <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
-                    </form>
-                </x-modal-glass>
+                <x-confirm-modal
+                    name="cl-del-{{ $c->id }}"
+                    title="Hapus Changelog"
+                    tone="danger"
+                    icon="trash"
+                    confirm-text="Ya, Hapus"
+                    :action="url('/admin/changelogs/'.$c->id)"
+                    method="DELETE"
+                    :message="'Hapus catatan rilis <strong>v'.e($c->version).'</strong>?'" />
             @endforeach
         </div>
         <div class="mt-6">{{ $changelogs->links() }}</div>

@@ -66,11 +66,12 @@ class ExamRunController extends Controller
             $deadline = $attempt->started_at->copy()->addMinutes($exam->duration_minutes);
             if (now()->greaterThanOrEqualTo($deadline)) {
                 $attempt->update(['status' => 'expired', 'submitted_at' => now()]);
+                $this->finalizeAttempt($attempt);
                 return redirect()->route('student.exams.result', $exam);
             }
         }
 
-        $exam->load('material.questions');
+        $exam->load(['material.questions' => fn ($q) => $q->orderBy('position')->orderBy('id')]);
         $questions = $exam->material->questions;
         if ($exam->shuffle_questions) {
             $questions = $questions->shuffle()->values();
@@ -86,7 +87,7 @@ class ExamRunController extends Controller
         return view('student.exams.run', compact('exam', 'attempt', 'questions', 'existing', 'remaining'));
     }
 
-    /** Simpan progres jawaban (auto-save). */
+    /** Simpan progres jawaban (auto-save). Mendukung essay text & MCQ pilihan. */
     public function save(Request $request, Exam $exam, Question $question): JsonResponse
     {
         $this->ensureCanAccess($exam);
@@ -94,11 +95,25 @@ class ExamRunController extends Controller
         $attempt = ExamAttempt::where('exam_id', $exam->id)
             ->where('user_id', Auth::id())->where('status', 'in_progress')->firstOrFail();
 
-        $data = $request->validate(['answer_text' => 'required|string|max:20000']);
+        $data = $request->validate([
+            'answer_text'     => 'nullable|string|max:20000',
+            'selected_option' => 'nullable|string|max:8',
+        ]);
+
+        $payload = [
+            'user_id' => Auth::id(),
+            'status'  => 'pending',
+        ];
+        if ($question->isMcq()) {
+            $payload['selected_option'] = $data['selected_option'] ?? null;
+            $payload['answer_text']     = $data['selected_option'] ?? '';
+        } else {
+            $payload['answer_text'] = $data['answer_text'] ?? '';
+        }
 
         Submission::updateOrCreate(
             ['exam_attempt_id' => $attempt->id, 'question_id' => $question->id],
-            ['answer_text' => $data['answer_text'], 'user_id' => Auth::id(), 'status' => 'pending'],
+            $payload,
         );
 
         return response()->json(['ok' => true, 'saved_at' => now()->toIso8601String()]);
@@ -116,7 +131,6 @@ class ExamRunController extends Controller
         $disqualified = false;
         if ($event === 'tab-switch') {
             $attempt->tab_switch_count = (int) $attempt->tab_switch_count + 1;
-            // 0 = langsung gugur; >0 = boleh hingga max
             if ($exam->prevent_tab_switch && $exam->max_tab_switch >= 0
                 && $attempt->tab_switch_count > $exam->max_tab_switch) {
                 $attempt->status = 'disqualified';
@@ -126,6 +140,10 @@ class ExamRunController extends Controller
         }
         $attempt->appendCheatLog($event);
         $attempt->save();
+
+        if ($disqualified) {
+            $this->finalizeAttempt($attempt->fresh());
+        }
 
         return response()->json([
             'ok'           => true,
@@ -143,22 +161,44 @@ class ExamRunController extends Controller
         $attempt = ExamAttempt::where('exam_id', $exam->id)
             ->where('user_id', Auth::id())->where('status', 'in_progress')->firstOrFail();
 
-        // Simpan sisa jawaban dari form (kalau ada)
-        $payload = $request->input('answers', []);
-        foreach ($payload as $questionId => $text) {
-            if (! is_string($text) || trim($text) === '') continue;
-            Submission::updateOrCreate(
-                ['exam_attempt_id' => $attempt->id, 'question_id' => (int) $questionId],
-                ['answer_text' => $text, 'user_id' => Auth::id(), 'status' => 'pending'],
-            );
+        // Simpan sisa jawaban dari form (essay & MCQ).
+        $textAnswers = $request->input('answers', []);
+        $mcqChoices  = $request->input('choices', []);
+
+        // Map question_id => Question untuk validasi tipe
+        $qMap = $exam->material->questions()->get()->keyBy('id');
+
+        foreach ($qMap as $qid => $question) {
+            if ($question->isMcq()) {
+                $choice = $mcqChoices[$qid] ?? null;
+                if ($choice === null || $choice === '') continue;
+                Submission::updateOrCreate(
+                    ['exam_attempt_id' => $attempt->id, 'question_id' => (int) $qid],
+                    [
+                        'user_id'         => Auth::id(),
+                        'selected_option' => (string) $choice,
+                        'answer_text'     => (string) $choice,
+                        'status'          => 'pending',
+                    ]
+                );
+            } else {
+                $text = $textAnswers[$qid] ?? null;
+                if (! is_string($text) || trim($text) === '') continue;
+                Submission::updateOrCreate(
+                    ['exam_attempt_id' => $attempt->id, 'question_id' => (int) $qid],
+                    [
+                        'user_id'     => Auth::id(),
+                        'answer_text' => $text,
+                        'status'      => 'pending',
+                    ]
+                );
+            }
         }
 
         $attempt->update(['status' => 'submitted', 'submitted_at' => now()]);
 
-        // Koreksi
-        if (in_array($exam->grading_mode, ['auto_ai', 'hybrid'])) {
-            $this->autoGrade($attempt, $ai);
-        }
+        // Koreksi (essay AI + MCQ otomatis) berdasarkan grading_mode
+        $this->finalizeAttempt($attempt->fresh(), $ai);
 
         return redirect()->route('student.exams.result', $exam);
     }
@@ -171,7 +211,6 @@ class ExamRunController extends Controller
             ->where('exam_id', $exam->id)
             ->where('user_id', Auth::id())->firstOrFail();
 
-        // Apakah hasil boleh tampil?
         $canSeeResult = $exam->show_result_after_submit || $attempt->result_released;
 
         $leaderboard = null;
@@ -195,7 +234,6 @@ class ExamRunController extends Controller
         if ($exam->status !== 'published' && $exam->status !== 'closed') abort(404);
         if (! $exam->isOpenNow() && ! $allowMember) abort(404, 'Ujian tidak sedang berlangsung.');
 
-        // Jika ujian terikat ke kelas, siswa harus member kelas itu
         if ($exam->classroom_id) {
             $isMember = DB::table('classroom_members')
                 ->where('classroom_id', $exam->classroom_id)
@@ -204,54 +242,126 @@ class ExamRunController extends Controller
         }
     }
 
-    protected function autoGrade(ExamAttempt $attempt, AIService $ai): void
+    /**
+     * Finalisasi attempt: koreksi MCQ otomatis + (jika mode auto/hybrid) koreksi esai via AI.
+     * Skor akhir = akumulasi skor seluruh soal (dipersentasekan ke 100).
+     */
+    protected function finalizeAttempt(ExamAttempt $attempt, ?AIService $ai = null): void
     {
         $exam = $attempt->exam;
         $material = $exam->material;
-        $total = 0;
-        $maxTotal = 0;
+        $material->loadMissing(['questions']);
 
-        foreach ($attempt->submissions()->with('question')->get() as $sub) {
-            if (! $sub->question) continue;
-            $maxTotal += (int) $sub->question->max_score;
-
-            try {
-                $rubric = $sub->question->rubric ?: 'Penilaian umum: relevansi, kedalaman analisis, struktur tulisan, tata bahasa.';
-                $prompt = "Konteks materi:\nJudul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
-                        ."Soal: {$sub->question->prompt_text}\n\nRubrik:\n{$rubric}\n\n"
-                        ."Jawaban siswa:\n\"\"\"\n{$sub->answer_text}\n\"\"\"\n\n"
-                        ."Tugas: 1) skor 0-100 (integer); 2) feedback konstruktif 3-6 kalimat dalam Bahasa Indonesia.\n"
-                        .'Skema JSON: { "score": <int>, "feedback": "<string>" }';
-                $sys = 'Anda korektor esai berbahasa Indonesia yang adil & pedagogis. Selalu balas hanya JSON valid.';
-
-                $json = $ai->generateJson($prompt, $sys);
-                $score = isset($json['score']) ? max(0, min(100, (int) $json['score'])) : null;
-                $feedback = isset($json['feedback']) ? trim((string) $json['feedback']) : '';
-
-                if ($score !== null && $feedback !== '') {
-                    $sub->update([
-                        'score' => $score,
-                        'feedback' => $feedback,
-                        'status' => 'graded',
-                        'graded_at' => now(),
-                        'manually_graded' => false,
-                    ]);
-                    $total += $score;
-                } else {
-                    $sub->update(['status' => 'submitted']);
-                }
-            } catch (\Throwable $e) {
-                $sub->update([
-                    'status' => 'failed',
-                    'feedback' => 'Koreksi otomatis gagal: '.$e->getMessage(),
+        // Koreksi MCQ — selalu otomatis (tidak butuh AI)
+        $mcqQuestions = $material->questions->where('type', 'mcq');
+        foreach ($mcqQuestions as $q) {
+            $sub = Submission::where('exam_attempt_id', $attempt->id)
+                ->where('question_id', $q->id)->first();
+            if (! $sub) {
+                // Buat submission kosong untuk MCQ tidak dijawab → skor 0
+                $sub = Submission::create([
+                    'exam_attempt_id' => $attempt->id,
+                    'question_id'     => $q->id,
+                    'user_id'         => $attempt->user_id,
+                    'answer_text'     => '',
+                    'selected_option' => null,
+                    'status'          => 'pending',
                 ]);
+            }
+            $isCorrect = $sub->selected_option !== null
+                && strtoupper((string) $sub->selected_option) === strtoupper((string) $q->correct_option);
+
+            $sub->update([
+                'score'           => $isCorrect ? (int) $q->max_score : 0,
+                'status'          => 'graded',
+                'feedback'        => $isCorrect
+                    ? 'Jawaban benar.'
+                    : 'Jawaban kurang tepat. Kunci: '.($q->correct_option ?: '—'),
+                'graded_at'       => now(),
+                'manually_graded' => false,
+            ]);
+        }
+
+        // Koreksi esai (kalau mode auto/hybrid dan AI tersedia)
+        if ($ai && in_array($exam->grading_mode, ['auto_ai', 'hybrid'])) {
+            foreach ($material->questions->where('type', 'essay') as $q) {
+                $sub = Submission::where('exam_attempt_id', $attempt->id)
+                    ->where('question_id', $q->id)->first();
+                if (! $sub || trim((string) $sub->answer_text) === '') {
+                    if (! $sub) {
+                        Submission::create([
+                            'exam_attempt_id' => $attempt->id,
+                            'question_id'     => $q->id,
+                            'user_id'         => $attempt->user_id,
+                            'answer_text'     => '',
+                            'score'           => 0,
+                            'status'          => 'graded',
+                            'feedback'        => 'Tidak dijawab.',
+                            'graded_at'       => now(),
+                        ]);
+                    } else {
+                        $sub->update(['score' => 0, 'status' => 'graded',
+                                      'feedback' => 'Tidak dijawab.', 'graded_at' => now()]);
+                    }
+                    continue;
+                }
+
+                try {
+                    $rubric = $q->rubric ?: 'Penilaian umum: relevansi, kedalaman analisis, struktur tulisan, tata bahasa.';
+                    $prompt = "Konteks materi:\nJudul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
+                            ."Soal: {$q->prompt_text}\n\nRubrik:\n{$rubric}\n\n"
+                            ."Jawaban siswa:\n\"\"\"\n{$sub->answer_text}\n\"\"\"\n\n"
+                            ."Tugas: 1) skor 0-100; 2) feedback konstruktif 3-6 kalimat dalam Bahasa Indonesia.\n"
+                            .'Skema JSON: { "score": <int>, "feedback": "<string>" }';
+                    $sys = 'Anda korektor esai berbahasa Indonesia yang adil & pedagogis. Selalu balas hanya JSON valid.';
+
+                    $json = $ai->generateJson($prompt, $sys);
+                    $score = isset($json['score']) ? max(0, min(100, (int) $json['score'])) : null;
+                    $feedback = isset($json['feedback']) ? trim((string) $json['feedback']) : '';
+
+                    if ($score !== null && $feedback !== '') {
+                        $rawScore = (int) round(($score / 100) * (int) $q->max_score);
+                        $sub->update([
+                            'score'           => $rawScore,
+                            'feedback'        => $feedback,
+                            'status'          => 'graded',
+                            'graded_at'       => now(),
+                            'manually_graded' => false,
+                        ]);
+                    } else {
+                        $sub->update(['status' => 'submitted']);
+                    }
+                } catch (\Throwable $e) {
+                    $sub->update([
+                        'status'   => 'failed',
+                        'feedback' => 'Koreksi otomatis gagal: '.$e->getMessage(),
+                    ]);
+                }
             }
         }
 
+        // Hitung skor akumulatif: total skor dari semua soal / total max_score × 100
+        $allSubs = Submission::with('question')
+            ->where('exam_attempt_id', $attempt->id)
+            ->whereHas('question', fn ($q) => $q->where('material_id', $material->id))
+            ->get();
+
+        $totalEarned = 0;
+        $totalMax = 0;
+        foreach ($material->questions as $q) {
+            $totalMax += (int) $q->max_score;
+            $sub = $allSubs->firstWhere('question_id', $q->id);
+            if ($sub && $sub->score !== null) {
+                $totalEarned += (int) $sub->score;
+            }
+        }
+
+        $finalScore = $totalMax > 0 ? (int) round(($totalEarned / $totalMax) * 100) : 0;
+
         $attempt->update([
-            'total_score' => min(100, $total > 0 ? (int) round($total / max(1, $attempt->submissions()->count())) : 0),
-            'max_score'   => 100,
-            'result_released' => $exam->show_result_after_submit,
+            'total_score'     => $finalScore,
+            'max_score'       => 100,
+            'result_released' => $exam->show_result_after_submit ? true : (bool) $attempt->result_released,
         ]);
     }
 }

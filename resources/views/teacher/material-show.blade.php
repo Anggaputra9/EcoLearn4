@@ -10,7 +10,8 @@
                 </div>
                 <p class="text-sm text-slate-500">{{ $material->topic }}</p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+                <a href="{{ route('teacher.materials.pdf', $material) }}" class="btn-secondary"><x-icon name="printer" class="w-4 h-4"/> Unduh PDF</a>
                 <a href="{{ route('teacher.materials.edit', $material) }}" class="btn-secondary"><x-icon name="pencil" class="w-4 h-4"/> Edit</a>
                 <button class="btn-danger" @click="$dispatch('open-modal', 'mat-del')"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
             </div>
@@ -30,9 +31,11 @@
 
             {{-- Soal --}}
             <div class="glass p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">Soal Esai ({{ $material->questions->count() }})</h3>
-                    <div class="flex gap-2">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">
+                        Daftar Soal ({{ $material->questions->count() }})
+                    </h3>
+                    <div class="flex gap-2 flex-wrap">
                         <button class="btn-secondary text-sm py-1.5 px-3" @click="$dispatch('open-modal', 'q-create')">
                             <x-icon name="plus" class="w-4 h-4"/> Manual
                         </button>
@@ -43,18 +46,42 @@
                 </div>
 
                 @if($material->questions->isEmpty())
-                    <p class="text-sm text-slate-500">Belum ada soal. Tambahkan secara manual atau generate dengan AI.</p>
+                    <p class="text-sm text-slate-500">Belum ada soal. Tambahkan secara manual atau generate dengan AI. Anda bisa mencampur soal esai dan pilihan ganda.</p>
                 @else
-                    <ol class="space-y-3 list-decimal list-inside">
-                        @foreach($material->questions as $q)
+                    <ol class="space-y-3">
+                        @foreach($material->questions as $i => $q)
                             <li class="rounded-xl bg-white/50 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-4">
                                 <div class="flex items-start justify-between gap-3">
-                                    <div class="flex-1">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xs uppercase font-semibold text-slate-500">Soal {{ $i + 1 }}</span>
+                                            @if($q->isMcq())
+                                                <span class="badge badge-violet">Pilihan Ganda</span>
+                                            @else
+                                                <span class="badge badge-emerald">Esai</span>
+                                            @endif
+                                            <span class="text-[11px] text-slate-400">Skor maks: {{ $q->max_score }}</span>
+                                        </div>
                                         <p class="text-slate-800 dark:text-slate-100 leading-relaxed">{{ $q->prompt_text }}</p>
-                                        @if($q->rubric)
+
+                                        @if($q->isMcq())
+                                            <ul class="mt-3 space-y-1.5">
+                                                @foreach($q->normalizedOptions() as $opt)
+                                                    <li class="flex items-start gap-2 text-sm">
+                                                        <span class="w-6 h-6 grid place-items-center rounded-full text-xs font-bold shrink-0
+                                                            {{ $opt['key'] === $q->correct_option ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300' }}">
+                                                            {{ $opt['key'] }}
+                                                        </span>
+                                                        <span class="text-slate-700 dark:text-slate-200 leading-relaxed">{{ $opt['text'] }}</span>
+                                                        @if($opt['key'] === $q->correct_option)
+                                                            <span class="badge badge-emerald text-[10px]">Kunci</span>
+                                                        @endif
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        @elseif($q->rubric)
                                             <p class="mt-2 text-xs text-slate-500"><span class="font-semibold">Rubrik:</span> {{ $q->rubric }}</p>
                                         @endif
-                                        <p class="mt-1 text-[11px] text-slate-400">Skor maks: {{ $q->max_score }}</p>
                                     </div>
                                     <div class="flex items-center gap-1 shrink-0">
                                         <button class="btn-ghost p-2" @click="$dispatch('open-modal', 'q-edit-{{ $q->id }}')"><x-icon name="pencil" class="w-4 h-4"/></button>
@@ -63,17 +90,40 @@
                                 </div>
                             </li>
 
-                            <x-modal-glass name="q-edit-{{ $q->id }}" title="Edit Soal" max-width="lg">
-                                <form method="POST" action="{{ route('teacher.questions.update', $q) }}" class="space-y-3">
+                            {{-- Modal Edit Soal --}}
+                            <x-modal-glass name="q-edit-{{ $q->id }}" title="Edit Soal {{ $q->isMcq() ? 'Pilihan Ganda' : 'Esai' }}" max-width="lg">
+                                <form method="POST" action="{{ route('teacher.questions.update', $q) }}" class="space-y-3"
+                                      x-data="qEditor({{ $q->isMcq() ? 'true' : 'false' }}, @js($q->normalizedOptions()), @js($q->correct_option))">
                                     @csrf @method('PUT')
                                     <div>
                                         <label class="block text-sm font-medium mb-1">Pertanyaan</label>
-                                        <textarea name="prompt_text" required rows="4" class="input-glass">{{ $q->prompt_text }}</textarea>
+                                        <textarea name="prompt_text" required rows="3" class="input-glass">{{ $q->prompt_text }}</textarea>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-medium mb-1">Rubrik</label>
-                                        <textarea name="rubric" rows="3" class="input-glass">{{ $q->rubric }}</textarea>
-                                    </div>
+
+                                    @if($q->isMcq())
+                                        <div>
+                                            <label class="block text-sm font-medium mb-1">Pilihan Jawaban (centang yang benar)</label>
+                                            <div class="space-y-2">
+                                                <template x-for="(o, i) in opts" :key="i">
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="radio" name="correct_index" :value="i" x-model.number="correct" class="w-5 h-5 text-emerald-600">
+                                                        <span class="font-bold w-6 text-slate-500" x-text="String.fromCharCode(65 + i)"></span>
+                                                        <input type="text" :name="`options[${i}]`" x-model="o.text" class="input-glass flex-1" placeholder="Tulis opsi…">
+                                                        <button type="button" class="btn-ghost p-1.5 text-rose-500" @click="opts.length > 2 && opts.splice(i, 1)" x-show="opts.length > 2"><x-icon name="close" class="w-4 h-4"/></button>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <button type="button" class="btn-ghost text-emerald-600 text-sm mt-2" @click="opts.length < 6 && opts.push({ text: '' })" x-show="opts.length < 6">
+                                                <x-icon name="plus" class="w-4 h-4"/> Tambah Opsi
+                                            </button>
+                                        </div>
+                                    @else
+                                        <div>
+                                            <label class="block text-sm font-medium mb-1">Rubrik</label>
+                                            <textarea name="rubric" rows="3" class="input-glass">{{ $q->rubric }}</textarea>
+                                        </div>
+                                    @endif
+
                                     <div>
                                         <label class="block text-sm font-medium mb-1">Skor Maksimum</label>
                                         <input type="number" name="max_score" min="1" max="100" value="{{ $q->max_score }}" class="input-glass w-32">
@@ -85,14 +135,15 @@
                                 </form>
                             </x-modal-glass>
 
-                            <x-modal-glass name="q-del-{{ $q->id }}" title="Hapus Soal" max-width="md">
-                                <p class="text-slate-600 dark:text-slate-300">Hapus soal ini dari materi?</p>
-                                <form method="POST" action="{{ route('teacher.questions.destroy', $q) }}" class="flex justify-end gap-2 mt-5">
-                                    @csrf @method('DELETE')
-                                    <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'q-del-{{ $q->id }}')">Batal</button>
-                                    <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
-                                </form>
-                            </x-modal-glass>
+                            <x-confirm-modal
+                                name="q-del-{{ $q->id }}"
+                                title="Hapus Soal"
+                                tone="danger"
+                                icon="trash"
+                                confirm-text="Hapus"
+                                :action="route('teacher.questions.destroy', $q)"
+                                method="DELETE"
+                                message="Hapus soal ini? Jawaban siswa terkait akan ikut hilang." />
                         @endforeach
                     </ol>
                 @endif
@@ -151,13 +202,32 @@
     </div>
 
     {{-- Modal Generate Soal AI --}}
-    <x-modal-glass name="gen-q" title="Generate Soal AI" max-width="md">
+    <x-modal-glass name="gen-q" title="Generate Soal dengan AI" max-width="md">
         <form method="POST" action="{{ route('teacher.questions.generate', $material) }}" class="space-y-4">
             @csrf
-            <p class="text-sm text-slate-600 dark:text-slate-300">AI akan membuat soal esai dari materi ini.</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">AI akan menyusun soal berdasarkan konten materi ini.</p>
+
             <div>
-                <label class="block text-sm font-medium mb-1">Jumlah Soal (1-10)</label>
-                <input type="number" name="jumlah" min="1" max="10" value="3" required class="input-glass">
+                <label class="block text-sm font-medium mb-2">Tipe Soal</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="kind" value="essay" class="peer sr-only">
+                        <div class="text-center px-3 py-2 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 peer-checked:bg-emerald-500 peer-checked:text-white peer-checked:border-emerald-500 transition text-sm font-medium">Esai</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="kind" value="mcq" class="peer sr-only">
+                        <div class="text-center px-3 py-2 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 peer-checked:bg-emerald-500 peer-checked:text-white peer-checked:border-emerald-500 transition text-sm font-medium">Pilihan Ganda</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="kind" value="mixed" class="peer sr-only" checked>
+                        <div class="text-center px-3 py-2 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 peer-checked:bg-emerald-500 peer-checked:text-white peer-checked:border-emerald-500 transition text-sm font-medium">Campuran</div>
+                    </label>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1">Jumlah Soal (1-15)</label>
+                <input type="number" name="jumlah" min="1" max="15" value="5" required class="input-glass">
             </div>
             <div class="flex justify-end gap-2">
                 <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'gen-q')">Batal</button>
@@ -168,20 +238,58 @@
 
     {{-- Modal Tambah Soal Manual --}}
     <x-modal-glass name="q-create" title="Tambah Soal Manual" max-width="lg">
-        <form method="POST" action="{{ route('teacher.questions.store', $material) }}" class="space-y-3">
+        <form method="POST" action="{{ route('teacher.questions.store', $material) }}" class="space-y-3"
+              x-data="qCreator()">
             @csrf
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Tipe Soal</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="type" value="essay" x-model="type" class="peer sr-only">
+                        <div class="text-center px-3 py-2 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 peer-checked:bg-emerald-500 peer-checked:text-white peer-checked:border-emerald-500 transition text-sm font-medium">Esai</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="type" value="mcq" x-model="type" class="peer sr-only">
+                        <div class="text-center px-3 py-2 rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 peer-checked:bg-emerald-500 peer-checked:text-white peer-checked:border-emerald-500 transition text-sm font-medium">Pilihan Ganda</div>
+                    </label>
+                </div>
+            </div>
+
             <div>
                 <label class="block text-sm font-medium mb-1">Pertanyaan</label>
-                <textarea name="prompt_text" required rows="4" class="input-glass" placeholder="Tulis soal esai…"></textarea>
+                <textarea name="prompt_text" required rows="3" class="input-glass" placeholder="Tulis pertanyaan…"></textarea>
             </div>
-            <div>
+
+            {{-- Opsi MCQ --}}
+            <div x-show="type === 'mcq'" x-cloak>
+                <label class="block text-sm font-medium mb-2">Pilihan Jawaban (pilih yang benar)</label>
+                <div class="space-y-2">
+                    <template x-for="(o, i) in opts" :key="i">
+                        <div class="flex items-center gap-2">
+                            <input type="radio" name="correct_index" :value="i" x-model.number="correct" class="w-5 h-5 text-emerald-600">
+                            <span class="font-bold w-6 text-slate-500" x-text="String.fromCharCode(65 + i)"></span>
+                            <input type="text" :name="`options[${i}]`" x-model="o.text" class="input-glass flex-1" placeholder="Tulis opsi…">
+                            <button type="button" class="btn-ghost p-1.5 text-rose-500" @click="opts.length > 2 && opts.splice(i, 1)" x-show="opts.length > 2"><x-icon name="close" class="w-4 h-4"/></button>
+                        </div>
+                    </template>
+                </div>
+                <button type="button" class="btn-ghost text-emerald-600 text-sm mt-2" @click="opts.length < 6 && opts.push({ text: '' })" x-show="opts.length < 6">
+                    <x-icon name="plus" class="w-4 h-4"/> Tambah Opsi
+                </button>
+            </div>
+
+            {{-- Rubrik untuk esai --}}
+            <div x-show="type === 'essay'" x-cloak>
                 <label class="block text-sm font-medium mb-1">Rubrik (opsional)</label>
                 <textarea name="rubric" rows="3" class="input-glass" placeholder="Kriteria penilaian"></textarea>
             </div>
+
             <div>
                 <label class="block text-sm font-medium mb-1">Skor Maksimum</label>
                 <input type="number" name="max_score" min="1" max="100" value="100" class="input-glass w-32">
             </div>
+
             <div class="flex justify-end gap-2 pt-2">
                 <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'q-create')">Batal</button>
                 <button class="btn-primary"><x-icon name="check" class="w-4 h-4"/> Tambah</button>
@@ -201,12 +309,32 @@
         </form>
     </x-modal-glass>
 
-    <x-modal-glass name="mat-del" title="Hapus Materi" max-width="md">
-        <p class="text-slate-600 dark:text-slate-300">Hapus materi <span class="font-semibold">{{ $material->title }}</span>? Semua soal, ujian, & jawaban siswa terkait juga akan terhapus.</p>
-        <form method="POST" action="{{ route('teacher.materials.destroy', $material) }}" class="flex justify-end gap-2 mt-5">
-            @csrf @method('DELETE')
-            <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'mat-del')">Batal</button>
-            <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus Permanen</button>
-        </form>
-    </x-modal-glass>
+    <x-confirm-modal
+        name="mat-del"
+        title="Hapus Materi"
+        tone="danger"
+        icon="trash"
+        confirm-text="Ya, Hapus Permanen"
+        :action="route('teacher.materials.destroy', $material)"
+        method="DELETE"
+        message="Hapus materi <strong>{{ e($material->title) }}</strong>? Semua soal, ujian, & jawaban siswa terkait juga akan ikut terhapus secara permanen." />
+
+    <script>
+        function qCreator() {
+            return {
+                type: 'essay',
+                opts: [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
+                correct: 0,
+            };
+        }
+        function qEditor(isMcq, options, correctKey) {
+            const opts = (options || []).map(o => ({ text: o.text }));
+            const idx = (options || []).findIndex(o => o.key === correctKey);
+            return {
+                type: isMcq ? 'mcq' : 'essay',
+                opts: opts.length ? opts : [{ text: '' }, { text: '' }],
+                correct: idx >= 0 ? idx : 0,
+            };
+        }
+    </script>
 </x-app-layout>

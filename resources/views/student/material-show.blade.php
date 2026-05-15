@@ -1,8 +1,13 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{{ $material->title }}</h2>
-            <p class="text-sm text-slate-500">{{ $material->topic }} · Oleh {{ $material->teacher->name }}</p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{{ $material->title }}</h2>
+                <p class="text-sm text-slate-500">{{ $material->topic }} · Oleh {{ $material->teacher->name }}</p>
+            </div>
+            <a href="{{ route('student.materials.pdf', $material) }}" class="btn-secondary">
+                <x-icon name="printer" class="w-4 h-4"/> Unduh PDF
+            </a>
         </div>
     </x-slot>
 
@@ -19,35 +24,52 @@
             </div>
 
             <div class="glass p-6">
-                <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-4">Soal Esai (Latihan)</h3>
+                <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-4">Soal Latihan</h3>
                 @if($material->questions->isEmpty())
-                    <p class="text-sm text-slate-500">Guru belum menambahkan soal latihan.</p>
+                    <p class="text-sm text-slate-500">Guru belum menambahkan soal latihan untuk materi ini.</p>
                 @else
                     <div class="space-y-3">
                         @foreach($material->questions as $i => $q)
                             @php $sub = $mySubmissions[$q->id] ?? null; @endphp
-                            <div class="rounded-xl bg-white/50 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-4 flex items-start justify-between gap-3">
-                                <div class="flex-1">
-                                    <p class="text-xs text-slate-500 mb-1">Soal {{ $i + 1 }}</p>
-                                    <p class="text-slate-800 dark:text-slate-100 leading-relaxed">{{ $q->prompt_text }}</p>
-                                    @if($sub && $sub->status === 'graded')
-                                        <div class="mt-3 inline-flex items-center gap-2 text-sm">
-                                            <span class="badge badge-emerald">Selesai</span>
-                                            <span class="font-bold text-emerald-700 dark:text-emerald-300">Skor: {{ $sub->score }}/100</span>
+                            <div class="rounded-xl bg-white/50 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <p class="text-xs uppercase font-semibold text-slate-500">Soal {{ $i + 1 }}</p>
+                                            @if($q->isMcq())
+                                                <span class="badge badge-violet text-[10px]">Pilihan Ganda</span>
+                                            @else
+                                                <span class="badge badge-emerald text-[10px]">Esai</span>
+                                            @endif
                                         </div>
-                                    @elseif($sub)
-                                        <span class="badge badge-amber">{{ ucfirst($sub->status) }}</span>
-                                    @endif
-                                </div>
-                                <div class="flex flex-col gap-2 shrink-0">
-                                    <a href="{{ route('student.questions.answer', $q) }}" class="btn-primary text-sm py-1.5 px-3">{{ $sub ? 'Ulang' : 'Mulai' }}</a>
-                                    @if($sub)
-                                        <a href="{{ route('student.submissions.show', $sub) }}" class="btn-secondary text-sm py-1.5 px-3">Hasil</a>
+                                        <p class="text-slate-800 dark:text-slate-100 leading-relaxed">{{ $q->prompt_text }}</p>
+                                        @if($sub && $sub->status === 'graded')
+                                            <div class="mt-3 inline-flex items-center gap-2 text-sm">
+                                                <span class="badge badge-emerald">Selesai</span>
+                                                <span class="font-bold text-emerald-700 dark:text-emerald-300">Skor: {{ $sub->score }}/100</span>
+                                            </div>
+                                        @elseif($sub)
+                                            <span class="badge badge-amber">{{ ucfirst($sub->status) }}</span>
+                                        @endif
+                                    </div>
+                                    @if($q->isEssay())
+                                        <div class="flex flex-col gap-2 shrink-0">
+                                            <a href="{{ route('student.questions.answer', $q) }}" class="btn-primary text-sm py-1.5 px-3">{{ $sub ? 'Ulang' : 'Mulai' }}</a>
+                                            @if($sub)
+                                                <a href="{{ route('student.submissions.show', $sub) }}" class="btn-secondary text-sm py-1.5 px-3">Hasil</a>
+                                            @endif
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400 shrink-0">Latihan via ujian</span>
                                     @endif
                                 </div>
                             </div>
                         @endforeach
                     </div>
+                    <p class="mt-4 text-xs text-slate-500">
+                        <x-icon name="shield" class="w-3 h-3 inline -mt-0.5"/>
+                        Untuk soal pilihan ganda, kerjakan melalui ujian agar penilaian akumulatif berjalan.
+                    </p>
                 @endif
             </div>
 
@@ -63,13 +85,35 @@
                 @else
                     <div class="space-y-2">
                         @foreach($material->exams as $exam)
-                            <a href="{{ route('student.exams.lobby', $exam) }}" class="block p-3 rounded-xl bg-white/50 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-800/70 border border-white/60 dark:border-white/10">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="badge {{ $exam->status === 'published' ? 'badge-emerald' : 'badge-rose' }}">{{ $exam->status === 'published' ? 'Live' : 'Tutup' }}</span>
-                                    <span class="text-xs text-slate-500"><x-icon name="clock" class="w-3 h-3 inline"/> {{ $exam->duration_minutes }} mnt</span>
-                                </div>
-                                <p class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ $exam->title }}</p>
-                            </a>
+                            @if($exam->status === 'published' && $exam->isOpenNow())
+                                <button type="button"
+                                        @click="$dispatch('open-modal', 'exam-start-{{ $exam->id }}')"
+                                        class="w-full text-left block p-3 rounded-xl bg-white/50 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-800/70 border border-white/60 dark:border-white/10">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="badge badge-emerald">Live</span>
+                                        <span class="text-xs text-slate-500"><x-icon name="clock" class="w-3 h-3 inline"/> {{ $exam->duration_minutes }} mnt</span>
+                                    </div>
+                                    <p class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ $exam->title }}</p>
+                                    <p class="text-xs text-emerald-600 mt-1">Klik untuk mulai →</p>
+                                </button>
+                                <x-confirm-modal
+                                    name="exam-start-{{ $exam->id }}"
+                                    title="Mulai Ujian Sekarang?"
+                                    tone="primary"
+                                    icon="play"
+                                    confirm-text="Ya, Mulai Sekarang"
+                                    :action="route('student.exams.start', $exam)"
+                                    method="POST"
+                                    :message="'Setelah mulai, Anda akan masuk ke ruang ujian. Aturan: dilarang pindah tab/copy-paste/klik kanan'.($exam->fullscreen_required ? ', wajib fullscreen' : '').'. Pelanggaran dapat menyebabkan diskualifikasi. Pastikan koneksi stabil dan waktu '.($exam->duration_minutes ?: '∞').' menit cukup.'" />
+                            @else
+                                <a href="{{ route('student.exams.lobby', $exam) }}" class="block p-3 rounded-xl bg-white/50 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-800/70 border border-white/60 dark:border-white/10">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="badge {{ $exam->status === 'published' ? 'badge-amber' : 'badge-rose' }}">{{ $exam->status === 'published' ? 'Belum Mulai' : 'Tutup' }}</span>
+                                        <span class="text-xs text-slate-500"><x-icon name="clock" class="w-3 h-3 inline"/> {{ $exam->duration_minutes }} mnt</span>
+                                    </div>
+                                    <p class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{{ $exam->title }}</p>
+                                </a>
+                            @endif
                         @endforeach
                     </div>
                 @endif

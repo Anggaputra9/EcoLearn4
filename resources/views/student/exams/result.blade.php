@@ -4,6 +4,13 @@
         <p class="text-sm text-slate-500">{{ $exam->title }} · {{ $exam->material->title }}</p>
     </x-slot>
 
+    @php
+        $totalMax = $exam->material->questions->sum('max_score');
+        $totalEarned = $attempt->submissions->sum(fn($s) => (int) ($s->score ?? 0));
+        $answeredCount = $attempt->submissions->whereNotNull('score')->count();
+        $totalQuestions = $exam->material->questions->count();
+    @endphp
+
     <div class="grid lg:grid-cols-3 gap-6 max-w-5xl">
         <div class="lg:col-span-2 space-y-6">
             @if($attempt->status === 'disqualified')
@@ -22,12 +29,15 @@
 
             @if($canSeeResult && $attempt->total_score !== null)
                 <div class="glass-strong bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6 border-emerald-300/40">
-                    <p class="text-sm opacity-90">Skor Akhir</p>
+                    <p class="text-sm opacity-90">Skor Akhir (Akumulatif)</p>
                     <div class="flex items-baseline gap-2 mt-1">
                         <span class="text-6xl font-extrabold">{{ $attempt->total_score }}</span>
                         <span class="text-xl opacity-80">/ 100</span>
                     </div>
-                    <p class="mt-2 text-sm opacity-90">Diserahkan {{ optional($attempt->submitted_at)->diffForHumans() }}</p>
+                    <p class="mt-3 text-sm opacity-90">
+                        Total poin: {{ $totalEarned }} / {{ $totalMax }} · Soal terjawab: {{ $answeredCount }} / {{ $totalQuestions }}
+                    </p>
+                    <p class="mt-1 text-xs opacity-80">Diserahkan {{ optional($attempt->submitted_at)->diffForHumans() }}</p>
                 </div>
             @elseif(! $canSeeResult)
                 <div class="glass border-amber-200/60 bg-amber-50/60 dark:bg-amber-900/40 p-6 text-amber-700 dark:text-amber-200">
@@ -40,14 +50,45 @@
                     <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Detail Jawaban</h3>
                     <div class="space-y-4">
                         @foreach($attempt->submissions as $sub)
+                            @php $q = $sub->question; @endphp
                             <div class="rounded-xl bg-white/50 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-4">
-                                <p class="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300">Soal</p>
-                                <p class="mt-1 text-slate-800 dark:text-slate-100 leading-relaxed">{{ $sub->question?->prompt_text }}</p>
-                                <p class="mt-3 text-xs uppercase font-semibold text-slate-500">Jawaban Anda</p>
-                                <p class="mt-1 text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{{ $sub->answer_text }}</p>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <p class="text-xs uppercase font-semibold text-emerald-700 dark:text-emerald-300">Soal</p>
+                                    @if($q?->isMcq())
+                                        <span class="badge badge-violet text-[10px]">Pilihan Ganda</span>
+                                    @else
+                                        <span class="badge badge-emerald text-[10px]">Esai</span>
+                                    @endif
+                                </div>
+                                <p class="text-slate-800 dark:text-slate-100 leading-relaxed">{{ $q?->prompt_text }}</p>
+
+                                @if($q?->isMcq())
+                                    <ul class="mt-3 space-y-1.5">
+                                        @foreach($q->normalizedOptions() as $opt)
+                                            <li class="flex items-center gap-2 text-sm">
+                                                <span class="w-6 h-6 grid place-items-center rounded-full text-xs font-bold shrink-0
+                                                    @if($opt['key'] === $q->correct_option) bg-emerald-500 text-white
+                                                    @elseif($opt['key'] === $sub->selected_option) bg-rose-500 text-white
+                                                    @else bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300
+                                                    @endif">{{ $opt['key'] }}</span>
+                                                <span>{{ $opt['text'] }}</span>
+                                                @if($opt['key'] === $q->correct_option)
+                                                    <span class="badge badge-emerald text-[10px]">Kunci</span>
+                                                @endif
+                                                @if($opt['key'] === $sub->selected_option && $opt['key'] !== $q->correct_option)
+                                                    <span class="badge badge-rose text-[10px]">Pilihan Anda</span>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                @else
+                                    <p class="mt-3 text-xs uppercase font-semibold text-slate-500">Jawaban Anda</p>
+                                    <p class="mt-1 text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{{ $sub->answer_text }}</p>
+                                @endif
+
                                 @if($sub->status === 'graded')
-                                    <div class="mt-3 flex items-center gap-2">
-                                        <span class="badge badge-emerald">Skor: {{ $sub->score }}/100</span>
+                                    <div class="mt-3 flex items-center gap-2 flex-wrap">
+                                        <span class="badge badge-emerald">Skor: {{ $sub->score }}/{{ $q?->max_score ?? 100 }}</span>
                                         @if($sub->manually_graded) <span class="badge badge-violet">Dikoreksi guru</span> @endif
                                     </div>
                                     @if($sub->feedback)

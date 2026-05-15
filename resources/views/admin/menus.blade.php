@@ -84,14 +84,15 @@
                             </form>
                         </x-modal-glass>
 
-                        <x-modal-glass name="menu-del-{{ $m->id }}" title="Hapus Menu" max-width="md">
-                            <p class="text-slate-600">Yakin ingin menghapus menu <span class="font-semibold">{{ $m->nama_menu }}</span>?</p>
-                            <form method="POST" action="{{ url('/admin/menus/'.$m->id) }}" class="flex justify-end gap-2 mt-5">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'menu-del-{{ $m->id }}')">Batal</button>
-                                <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
-                            </form>
-                        </x-modal-glass>
+                        <x-confirm-modal
+                            name="menu-del-{{ $m->id }}"
+                            title="Hapus Menu"
+                            tone="danger"
+                            icon="trash"
+                            confirm-text="Ya, Hapus"
+                            :action="url('/admin/menus/'.$m->id)"
+                            method="DELETE"
+                            :message="'Yakin ingin menghapus menu <strong>'.e($m->nama_menu).'</strong>?'" />
                     @empty
                         <tr><td colspan="4" class="px-5 py-10 text-center text-slate-500">Tidak ada menu.</td></tr>
                     @endforelse

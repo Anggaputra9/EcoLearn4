@@ -127,6 +127,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Rute disisakan agar link/bookmark lama tidak 500; arahkan ke index.
         Route::get('/materials/create',                 fn () => redirect()->route('teacher.index'))->name('materials.create');
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
+        Route::get('/materials/{material}/pdf',         [TeacherController::class, 'downloadMaterialPdf'])->name('materials.pdf');
 
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');
@@ -170,6 +171,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('student')->name('student.')->middleware('role:student')->group(function () {
         Route::get('/',                              [StudentController::class, 'index'])->name('index');
         Route::get('/materials/{material}',          [StudentController::class, 'showMaterial'])->name('materials.show');
+        Route::get('/materials/{material}/pdf',      [StudentController::class, 'downloadMaterialPdf'])->name('materials.pdf');
         Route::get('/questions/{question}/answer',   [StudentController::class, 'answerForm'])->name('questions.answer');
         Route::post('/questions/{question}/answer',  [StudentController::class, 'submitAnswer'])->name('questions.submit');
         Route::get('/submissions/{submission}',      [StudentController::class, 'showSubmission'])->name('submissions.show');

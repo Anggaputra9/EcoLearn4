@@ -15,6 +15,7 @@ class Submission extends Model
         'exam_attempt_id',
         'question_id',
         'answer_text',
+        'selected_option',
         'score',
         'feedback',
         'status',

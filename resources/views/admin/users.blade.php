@@ -98,14 +98,15 @@
                         </x-modal-glass>
 
                         {{-- Modal Hapus --}}
-                        <x-modal-glass name="user-del-{{ $u->id }}" title="Hapus Pengguna" max-width="md">
-                            <p class="text-slate-600">Yakin ingin menghapus <span class="font-semibold">{{ $u->name }}</span>? Tindakan ini tidak dapat dibatalkan.</p>
-                            <form method="POST" action="{{ url('/admin/users/'.$u->id) }}" class="flex justify-end gap-2 mt-5">
-                                @csrf @method('DELETE')
-                                <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'user-del-{{ $u->id }}')">Batal</button>
-                                <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
-                            </form>
-                        </x-modal-glass>
+                        <x-confirm-modal
+                            name="user-del-{{ $u->id }}"
+                            title="Hapus Pengguna"
+                            tone="danger"
+                            icon="trash"
+                            confirm-text="Ya, Hapus Pengguna"
+                            :action="url('/admin/users/'.$u->id)"
+                            method="DELETE"
+                            :message="'Yakin ingin menghapus <strong>'.e($u->name).'</strong>? Tindakan ini tidak dapat dibatalkan.'" />
 
                     @empty
                         <tr><td colspan="5" class="px-5 py-10 text-center text-slate-500">Tidak ada pengguna yang cocok.</td></tr>

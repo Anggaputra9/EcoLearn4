@@ -68,11 +68,20 @@
                                     <p class="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{{ $m->name }}</p>
                                     <p class="text-xs text-slate-500 truncate">{{ $m->email }}</p>
                                 </div>
-                                <form method="POST" action="{{ route('teacher.classrooms.removeMember', [$classroom, $m->id]) }}">
-                                    @csrf @method('DELETE')
-                                    <button class="btn-ghost p-1.5 text-rose-600" title="Keluarkan"><x-icon name="close" class="w-4 h-4"/></button>
-                                </form>
+                                <button type="button" class="btn-ghost p-1.5 text-rose-600" title="Keluarkan"
+                                        @click="$dispatch('open-modal', 'rm-member-{{ $m->id }}')">
+                                    <x-icon name="close" class="w-4 h-4"/>
+                                </button>
                             </div>
+                            <x-confirm-modal
+                                name="rm-member-{{ $m->id }}"
+                                title="Keluarkan Siswa"
+                                tone="danger"
+                                icon="logout"
+                                confirm-text="Ya, Keluarkan"
+                                :action="route('teacher.classrooms.removeMember', [$classroom, $m->id])"
+                                method="DELETE"
+                                :message="'Keluarkan <strong>'.e($m->name).'</strong> dari kelas ini?'" />
                         @endforeach
                     </div>
                 @endif
@@ -101,12 +110,13 @@
         </form>
     </x-modal-glass>
 
-    <x-modal-glass name="class-del" title="Hapus Kelas" max-width="md">
-        <p class="text-slate-600 dark:text-slate-300">Hapus kelas <span class="font-semibold">{{ $classroom->name }}</span>? Materi tetap aman tapi tautan kelas akan dihapus.</p>
-        <form method="POST" action="{{ route('teacher.classrooms.destroy', $classroom) }}" class="flex justify-end gap-2 mt-5">
-            @csrf @method('DELETE')
-            <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'class-del')">Batal</button>
-            <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
-        </form>
-    </x-modal-glass>
+    <x-confirm-modal
+        name="class-del"
+        title="Hapus Kelas"
+        tone="danger"
+        icon="trash"
+        confirm-text="Ya, Hapus Kelas"
+        :action="route('teacher.classrooms.destroy', $classroom)"
+        method="DELETE"
+        :message="'Hapus kelas <strong>'.e($classroom->name).'</strong>? Materi tetap aman tapi tautan kelas dan keanggotaan siswa akan dihapus.'" />
 </x-app-layout>

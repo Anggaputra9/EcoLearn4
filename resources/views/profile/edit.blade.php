@@ -31,12 +31,19 @@
             </form>
 
             @if($user->profile_photo_path)
-                <form method="POST" action="{{ route('profile.photo.delete') }}" class="mt-2">
-                    @csrf
-                    <button class="btn-ghost w-full text-rose-600">
-                        <x-icon name="trash" class="w-4 h-4"/> Hapus Foto
-                    </button>
-                </form>
+                <button type="button" class="btn-ghost w-full text-rose-600 mt-2"
+                        @click="$dispatch('open-modal', 'photo-del')">
+                    <x-icon name="trash" class="w-4 h-4"/> Hapus Foto
+                </button>
+                <x-confirm-modal
+                    name="photo-del"
+                    title="Hapus Foto Profil"
+                    tone="danger"
+                    icon="trash"
+                    confirm-text="Ya, Hapus Foto"
+                    :action="route('profile.photo.delete')"
+                    method="POST"
+                    message="Foto profil akan dihapus dan diganti avatar default. Tindakan ini tidak dapat dibatalkan." />
             @endif
         </div>
 
@@ -102,14 +109,24 @@
         </div>
     </div>
 
-    <x-modal-glass name="profile-delete" title="Hapus Akun" max-width="md">
-        <p class="text-slate-600">Konfirmasi dengan kata sandi Anda. Semua data terkait akan ikut terhapus.</p>
-        <form method="POST" action="{{ route('profile.destroy') }}" class="mt-4 space-y-3">
+    <x-modal-glass name="profile-delete" title="Hapus Akun Saya" max-width="md">
+        <div class="flex items-start gap-3 mb-4">
+            <div class="w-10 h-10 grid place-items-center rounded-full bg-rose-100 dark:bg-rose-900/40 shrink-0">
+                <x-icon name="trash" class="w-5 h-5 text-rose-600"/>
+            </div>
+            <div class="flex-1">
+                <p class="text-slate-700 dark:text-slate-200 leading-relaxed">
+                    Tindakan ini <strong>permanen</strong>. Semua materi, soal, hasil ujian, dan data terkait akan ikut terhapus.
+                    Konfirmasi dengan memasukkan kata sandi Anda.
+                </p>
+            </div>
+        </div>
+        <form method="POST" action="{{ route('profile.destroy') }}" class="space-y-3">
             @csrf @method('DELETE')
             <input type="password" name="password" required placeholder="Kata sandi Anda" class="input-glass">
             <div class="flex justify-end gap-2">
                 <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'profile-delete')">Batal</button>
-                <button class="btn-danger">Hapus Akun</button>
+                <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus Permanen</button>
             </div>
         </form>
     </x-modal-glass>

@@ -11,21 +11,45 @@
             <div class="flex flex-wrap items-center gap-2">
                 <button class="btn-secondary" @click="$dispatch('open-modal', 'exam-edit')"><x-icon name="pencil" class="w-4 h-4"/> Edit</button>
                 @if($exam->status === 'draft')
-                    <form method="POST" action="{{ route('teacher.exams.publish', $exam) }}" class="inline">
-                        @csrf
-                        <button class="btn-primary"><x-icon name="play" class="w-4 h-4"/> Mulai</button>
-                    </form>
+                    <button type="button" class="btn-primary" @click="$dispatch('open-modal', 'exam-publish')">
+                        <x-icon name="play" class="w-4 h-4"/> Publish
+                    </button>
+                    <x-confirm-modal
+                        name="exam-publish"
+                        title="Publikasikan Ujian"
+                        tone="primary"
+                        icon="play"
+                        confirm-text="Ya, Publikasikan"
+                        :action="route('teacher.exams.publish', $exam)"
+                        method="POST"
+                        message="Setelah dipublikasikan, siswa anggota kelas dapat memulai ujian sesuai jadwal. Pastikan semua soal sudah benar." />
                 @elseif($exam->status === 'published')
-                    <form method="POST" action="{{ route('teacher.exams.close', $exam) }}" class="inline">
-                        @csrf
-                        <button class="btn-danger"><x-icon name="stop" class="w-4 h-4"/> Tutup</button>
-                    </form>
+                    <button type="button" class="btn-danger" @click="$dispatch('open-modal', 'exam-close')">
+                        <x-icon name="stop" class="w-4 h-4"/> Tutup
+                    </button>
+                    <x-confirm-modal
+                        name="exam-close"
+                        title="Tutup Ujian"
+                        tone="danger"
+                        icon="stop"
+                        confirm-text="Ya, Tutup Ujian"
+                        :action="route('teacher.exams.close', $exam)"
+                        method="POST"
+                        message="Siswa yang belum mulai tidak akan bisa mengakses lagi. Yang sedang berjalan tetap bisa mengirim jawaban." />
                 @endif
                 <a href="{{ route('teacher.exams.report', $exam) }}" class="btn-secondary"><x-icon name="printer" class="w-4 h-4"/> Cetak Laporan</a>
-                <form method="POST" action="{{ route('teacher.exams.release', $exam) }}" onsubmit="return confirm('Rilis hasil & kirim email ke peserta?')">
-                    @csrf
-                    <button class="btn-secondary"><x-icon name="send" class="w-4 h-4"/> Rilis Hasil</button>
-                </form>
+                <button type="button" class="btn-secondary" @click="$dispatch('open-modal', 'exam-release')">
+                    <x-icon name="send" class="w-4 h-4"/> Rilis Hasil
+                </button>
+                <x-confirm-modal
+                    name="exam-release"
+                    title="Rilis Hasil ke Siswa"
+                    tone="primary"
+                    icon="send"
+                    confirm-text="Ya, Rilis & Kirim Email"
+                    :action="route('teacher.exams.release', $exam)"
+                    method="POST"
+                    message="Hasil ujian akan dirilis dan email notifikasi dikirim ke setiap peserta yang sudah submit." />
             </div>
         </div>
     </x-slot>
@@ -120,15 +144,12 @@
     </div>
 
     <x-modal-glass name="exam-edit" title="Edit Ujian" max-width="3xl">
-        <form id="exam-delete-form" method="POST" action="{{ route('teacher.exams.destroy', $exam) }}">
-            @csrf @method('DELETE')
-        </form>
         <form method="POST" action="{{ route('teacher.exams.update', $exam) }}" class="space-y-4">
             @csrf @method('PUT')
             @include('teacher.exams._fields', ['exam' => $exam])
             <div class="flex justify-between gap-2 pt-2">
-                <button type="submit" form="exam-delete-form" class="btn-danger"
-                        onclick="return confirm('Hapus ujian beserta semua attempt?')">
+                <button type="button" class="btn-danger"
+                        @click="$dispatch('close-modal', 'exam-edit'); $dispatch('open-modal', 'exam-del')">
                     <x-icon name="trash" class="w-4 h-4"/> Hapus Ujian
                 </button>
                 <div class="flex gap-2">
@@ -138,4 +159,14 @@
             </div>
         </form>
     </x-modal-glass>
+
+    <x-confirm-modal
+        name="exam-del"
+        title="Hapus Ujian"
+        tone="danger"
+        icon="trash"
+        confirm-text="Ya, Hapus Permanen"
+        :action="route('teacher.exams.destroy', $exam)"
+        method="DELETE"
+        :message="'Hapus ujian <strong>'.e($exam->title).'</strong> beserta seluruh attempt dan jawaban siswa? Tindakan ini permanen.'" />
 </x-app-layout>

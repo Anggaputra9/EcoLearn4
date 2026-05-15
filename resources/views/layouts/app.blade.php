@@ -71,5 +71,17 @@
         </footer>
     </div>
 </div>
+
+{{-- Modal global: konfirmasi keluar --}}
+<x-confirm-modal
+    name="sidebar-logout"
+    title="Keluar dari Akun"
+    icon="logout"
+    tone="danger"
+    confirm-text="Ya, Keluar"
+    :action="route('logout')"
+    method="POST"
+    message="Anda akan keluar dari sesi ini. Pastikan semua pekerjaan sudah tersimpan."
+/>
 </body>
 </html>

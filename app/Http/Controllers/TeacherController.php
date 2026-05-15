@@ -6,9 +6,11 @@ use App\Models\Classroom;
 use App\Models\Material;
 use App\Models\Question;
 use App\Services\AIService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -76,7 +78,6 @@ class TeacherController extends Controller
             'is_published' => 'sometimes|boolean',
         ]);
 
-        // Pastikan classroom milik guru ini kalau diisi
         if (! empty($data['classroom_id'])) {
             $own = Classroom::where('id', $data['classroom_id'])->where('teacher_id', Auth::id())->exists();
             if (! $own) abort(403, 'Kelas bukan milik Anda.');
@@ -93,7 +94,10 @@ class TeacherController extends Controller
     public function showMaterial(Material $material): View
     {
         $this->authorizeOwnership($material);
-        $material->load(['questions', 'classroom', 'exams', 'discussions.replies.user', 'discussions.user']);
+        $material->load([
+            'questions' => fn ($q) => $q->orderBy('position')->orderBy('id'),
+            'classroom', 'exams', 'discussions.replies.user', 'discussions.user',
+        ]);
         $classrooms = Classroom::where('teacher_id', Auth::id())->orderBy('name')->get();
         return view('teacher.material-show', compact('material', 'classrooms'));
     }
@@ -133,16 +137,60 @@ class TeacherController extends Controller
         return redirect()->route('teacher.index')->with('success', 'Materi berhasil dihapus.');
     }
 
+    /**
+     * Download materi sebagai PDF.
+     */
+    public function downloadMaterialPdf(Material $material): Response
+    {
+        $this->authorizeOwnership($material);
+        $material->load(['teacher', 'classroom']);
+
+        $pdf = Pdf::loadView('teacher.material-pdf', ['material' => $material])
+            ->setPaper('a4', 'portrait');
+
+        $filename = 'Materi-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Generate soal AI — bisa pilih tipe: essay | mcq | mixed.
+     */
     public function generateQuestions(Request $request, Material $material, AIService $ai): RedirectResponse
     {
         $this->authorizeOwnership($material);
-        $data = $request->validate(['jumlah' => 'required|integer|min:1|max:10']);
+        $data = $request->validate([
+            'jumlah' => 'required|integer|min:1|max:15',
+            'kind'   => 'required|in:essay,mcq,mixed',
+        ]);
 
-        $system = 'Anda penyusun soal esai berbahasa Indonesia bertema ekoteologi. Selalu balas JSON valid.';
-        $prompt = "Berdasarkan materi berikut, buat tepat {$data['jumlah']} soal esai dalam bahasa Indonesia.\n\n"
-                ."Judul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
-                .$material->content."\n\n"
-                .'Skema JSON: { "questions": [ { "prompt_text": "...", "rubric": "..." } ] }';
+        $kind = $data['kind'];
+        $jumlah = (int) $data['jumlah'];
+
+        $system = 'Anda penyusun soal berbahasa Indonesia bertema ekoteologi. Selalu balas JSON valid tanpa teks pembuka/penutup.';
+
+        if ($kind === 'essay') {
+            $prompt = "Berdasarkan materi berikut, buat tepat {$jumlah} soal esai dalam bahasa Indonesia.\n\n"
+                    ."Judul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
+                    .$material->content."\n\n"
+                    .'Skema JSON: { "questions": [ { "type": "essay", "prompt_text": "...", "rubric": "..." } ] }';
+        } elseif ($kind === 'mcq') {
+            $prompt = "Berdasarkan materi berikut, buat tepat {$jumlah} soal pilihan ganda (4 opsi A-D) dalam bahasa Indonesia.\n\n"
+                    ."Judul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
+                    .$material->content."\n\n"
+                    .'Setiap soal harus punya 4 opsi (A,B,C,D) dan satu kunci jawaban yang benar.'."\n"
+                    .'Skema JSON: { "questions": [ { "type":"mcq", "prompt_text":"...", '
+                    .'"options":[ {"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."} ], '
+                    .'"correct_option":"A" } ] }';
+        } else {
+            $half = (int) max(1, floor($jumlah / 2));
+            $essay = $jumlah - $half;
+            $prompt = "Berdasarkan materi berikut, buat campuran soal: {$half} pilihan ganda (4 opsi) DAN {$essay} esai dalam bahasa Indonesia.\n\n"
+                    ."Judul: {$material->title}\nTopik: {$material->topic}\nTingkat: {$material->level}\n\n"
+                    .$material->content."\n\n"
+                    .'Skema JSON: { "questions": [ { "type":"mcq", "prompt_text":"...", '
+                    .'"options":[{"key":"A","text":"..."},{"key":"B","text":"..."},{"key":"C","text":"..."},{"key":"D","text":"..."}], '
+                    .'"correct_option":"A" }, { "type":"essay", "prompt_text":"...", "rubric":"..." } ] }';
+        }
 
         try {
             $items = $ai->generateJson($prompt, $system)['questions'] ?? [];
@@ -152,47 +200,157 @@ class TeacherController extends Controller
 
         if (empty($items)) return back()->with('error', 'AI tidak menghasilkan soal.');
 
+        $startPos = (int) Question::where('material_id', $material->id)->max('position') + 1;
+        $created = 0;
+
         foreach ($items as $item) {
-            if (empty($item['prompt_text'])) continue;
-            Question::create([
-                'material_id' => $material->id,
-                'prompt_text' => trim($item['prompt_text']),
-                'type' => 'essay', 'max_score' => 100,
-                'rubric' => isset($item['rubric']) ? trim($item['rubric']) : null,
-            ]);
+            $type = ($item['type'] ?? 'essay') === 'mcq' ? 'mcq' : 'essay';
+            $prompt_text = trim((string) ($item['prompt_text'] ?? ''));
+            if ($prompt_text === '') continue;
+
+            if ($type === 'mcq') {
+                $opts = $this->normalizeAiOptions($item['options'] ?? []);
+                $correct = strtoupper((string) ($item['correct_option'] ?? ''));
+                if (count($opts) < 2 || $correct === '') continue;
+                // Validasi correct ada di opsi
+                $keys = array_column($opts, 'key');
+                if (! in_array($correct, $keys, true)) {
+                    $correct = $keys[0];
+                }
+                Question::create([
+                    'material_id'    => $material->id,
+                    'prompt_text'    => $prompt_text,
+                    'type'           => 'mcq',
+                    'max_score'      => 100,
+                    'rubric'         => null,
+                    'options'        => $opts,
+                    'correct_option' => $correct,
+                    'position'       => $startPos++,
+                ]);
+            } else {
+                Question::create([
+                    'material_id' => $material->id,
+                    'prompt_text' => $prompt_text,
+                    'type'        => 'essay',
+                    'max_score'   => 100,
+                    'rubric'      => isset($item['rubric']) ? trim((string) $item['rubric']) : null,
+                    'position'    => $startPos++,
+                ]);
+            }
+            $created++;
         }
 
-        return back()->with('success', count($items).' soal esai berhasil dibuat.');
+        if ($created === 0) return back()->with('error', 'Format soal AI tidak valid.');
+
+        return back()->with('success', $created.' soal berhasil dibuat.');
     }
 
-    /** Buat / edit soal manual (atau meluruskan hasil AI). */
+    /** Tambah soal manual (essay atau MCQ). */
     public function storeQuestion(Request $request, Material $material): RedirectResponse
     {
         $this->authorizeOwnership($material);
-        $data = $request->validate([
+
+        $type = $request->input('type', 'essay');
+        $rules = [
+            'type'        => 'required|in:essay,mcq',
             'prompt_text' => 'required|string|max:2000',
-            'rubric'      => 'nullable|string|max:2000',
             'max_score'   => 'nullable|integer|min:1|max:100',
-        ]);
-        Question::create([
-            'material_id' => $material->id,
-            'prompt_text' => $data['prompt_text'],
-            'rubric'      => $data['rubric'] ?? null,
-            'max_score'   => $data['max_score'] ?? 100,
-            'type'        => 'essay',
-        ]);
+        ];
+
+        if ($type === 'mcq') {
+            $rules += [
+                'options'        => 'required|array|min:2|max:6',
+                'options.*'      => 'required|string|max:500',
+                'correct_index'  => 'required|integer|min:0',
+            ];
+        } else {
+            $rules['rubric'] = 'nullable|string|max:2000';
+        }
+
+        $data = $request->validate($rules);
+
+        $position = (int) Question::where('material_id', $material->id)->max('position') + 1;
+
+        if ($type === 'mcq') {
+            $opts = [];
+            foreach ($data['options'] as $i => $text) {
+                $text = trim($text);
+                if ($text === '') continue;
+                $opts[] = ['key' => chr(65 + count($opts)), 'text' => $text];
+            }
+            if (count($opts) < 2) {
+                return back()->with('error', 'Pilihan ganda butuh minimal 2 opsi.');
+            }
+            $correctIdx = min((int) $data['correct_index'], count($opts) - 1);
+            $correctKey = $opts[$correctIdx]['key'];
+
+            Question::create([
+                'material_id'    => $material->id,
+                'prompt_text'    => $data['prompt_text'],
+                'type'           => 'mcq',
+                'max_score'      => $data['max_score'] ?? 100,
+                'options'        => $opts,
+                'correct_option' => $correctKey,
+                'position'       => $position,
+            ]);
+        } else {
+            Question::create([
+                'material_id' => $material->id,
+                'prompt_text' => $data['prompt_text'],
+                'rubric'      => $data['rubric'] ?? null,
+                'max_score'   => $data['max_score'] ?? 100,
+                'type'        => 'essay',
+                'position'    => $position,
+            ]);
+        }
+
         return back()->with('success', 'Soal ditambahkan.');
     }
 
     public function updateQuestion(Request $request, Question $question): RedirectResponse
     {
         $this->authorizeOwnership($question->material);
-        $data = $request->validate([
+
+        $rules = [
             'prompt_text' => 'required|string|max:2000',
-            'rubric'      => 'nullable|string|max:2000',
             'max_score'   => 'nullable|integer|min:1|max:100',
-        ]);
-        $question->update($data + ['max_score' => $data['max_score'] ?? $question->max_score]);
+        ];
+        if ($question->type === 'mcq') {
+            $rules += [
+                'options'       => 'required|array|min:2|max:6',
+                'options.*'     => 'required|string|max:500',
+                'correct_index' => 'required|integer|min:0',
+            ];
+        } else {
+            $rules['rubric'] = 'nullable|string|max:2000';
+        }
+
+        $data = $request->validate($rules);
+
+        if ($question->type === 'mcq') {
+            $opts = [];
+            foreach ($data['options'] as $text) {
+                $text = trim($text);
+                if ($text === '') continue;
+                $opts[] = ['key' => chr(65 + count($opts)), 'text' => $text];
+            }
+            if (count($opts) < 2) return back()->with('error', 'Pilihan ganda butuh minimal 2 opsi.');
+            $correctIdx = min((int) $data['correct_index'], count($opts) - 1);
+
+            $question->update([
+                'prompt_text'    => $data['prompt_text'],
+                'max_score'      => $data['max_score'] ?? $question->max_score,
+                'options'        => $opts,
+                'correct_option' => $opts[$correctIdx]['key'],
+            ]);
+        } else {
+            $question->update([
+                'prompt_text' => $data['prompt_text'],
+                'rubric'      => $data['rubric'] ?? null,
+                'max_score'   => $data['max_score'] ?? $question->max_score,
+            ]);
+        }
+
         return back()->with('success', 'Soal diperbarui.');
     }
 
@@ -215,5 +373,26 @@ class TeacherController extends Controller
     protected function authorizeOwnership(Material $material): void
     {
         abort_unless($material->teacher_id === Auth::id(), 403, 'Materi ini bukan milik Anda.');
+    }
+
+    /**
+     * Normalisasi opsi MCQ dari output AI menjadi [{key,text}, ...].
+     */
+    protected function normalizeAiOptions(mixed $raw): array
+    {
+        if (! is_array($raw)) return [];
+        $out = [];
+        foreach ($raw as $i => $opt) {
+            if (is_array($opt)) {
+                $key = isset($opt['key']) && $opt['key'] !== '' ? strtoupper((string) $opt['key']) : chr(65 + count($out));
+                $text = trim((string) ($opt['text'] ?? ''));
+            } else {
+                $key = chr(65 + count($out));
+                $text = trim((string) $opt);
+            }
+            if ($text === '') continue;
+            $out[] = ['key' => $key, 'text' => $text];
+        }
+        return $out;
     }
 }

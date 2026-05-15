@@ -18,36 +18,34 @@
 @endphp
 
 {{--
-    Modal di-teleport ke <body> supaya tidak terjebak di containing block
-    dengan backdrop-filter / transform (mis. card .glass). Tanpa teleport,
-    `position: fixed` di dalam modal akan dihitung relatif ke ancestor tsb,
-    sehingga modal "masuk ke dalam card".
+    Modal di-teleport ke <body> + z-index sangat tinggi (z-[2000]) supaya
+    SELALU menutup header sticky / sidebar / konten apa pun. Tanpa teleport,
+    `position: fixed` di dalam modal akan terjebak di containing block
+    ancestor yang punya backdrop-filter/transform.
 --}}
 <template x-teleport="body">
-    <div x-data="{ show: false, lockScroll() { document.body.classList.add('overflow-hidden'); }, unlock() { document.body.classList.remove('overflow-hidden'); } }"
-         x-on:open-modal.window="if ($event.detail === '{{ $name }}') { show = true; lockScroll(); }"
+    <div x-data="{
+            show: false,
+            lock() { document.documentElement.classList.add('overflow-hidden'); document.body.classList.add('overflow-hidden'); },
+            unlock() { document.documentElement.classList.remove('overflow-hidden'); document.body.classList.remove('overflow-hidden'); }
+         }"
+         x-on:open-modal.window="if ($event.detail === '{{ $name }}') { show = true; lock(); }"
          x-on:close-modal.window="if ($event.detail === '{{ $name }}') { show = false; unlock(); }"
          x-on:keydown.escape.window="show = false; unlock();"
          x-show="show"
          x-cloak
-         class="fixed inset-0 z-[100]"
-         style="display: none;">
+         class="fixed inset-0"
+         style="z-index: 2000; display: none;">
 
-        {{-- Overlay: blur tebal supaya sidebar/header/konten di belakang ikut blur --}}
-        <div class="fixed inset-0 bg-slate-900/55 dark:bg-slate-950/75"
-             style="backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);"
+        {{-- Overlay full-bleed: blur tebal ke seluruh viewport (sidebar, header, konten ikut blur) --}}
+        <div class="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80"
+             style="z-index: 2000; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);"
              x-show="show"
-             x-transition:enter="transition ease-out duration-200"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             x-transition:leave="transition ease-in duration-150"
-             x-transition:leave-start="opacity-100"
-             x-transition:leave-end="opacity-0"
+             x-transition.opacity
              @click="show = false; unlock();"></div>
 
-        {{-- Wrapper kontent: grid place-items-center memastikan dialog SELALU di tengah viewport.
-             overflow-y-auto agar konten panjang tetap bisa di-scroll. --}}
-        <div class="fixed inset-0 overflow-y-auto" @click.self="show = false; unlock();">
+        {{-- Wrapper dialog: grid place-items-center supaya selalu di tengah viewport secara vertikal & horizontal --}}
+        <div class="fixed inset-0 overflow-y-auto" style="z-index: 2010;" @click.self="show = false; unlock();">
             <div class="min-h-full grid place-items-center p-3 sm:p-4">
                 <div x-show="show"
                      x-transition:enter="transition ease-out duration-200"

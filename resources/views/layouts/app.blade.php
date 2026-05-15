@@ -35,40 +35,41 @@
 <body x-data="{ sidebarOpen: false }"
       @toggle-sidebar.window="sidebarOpen = !sidebarOpen"
       class="font-sans antialiased text-slate-700 dark:text-slate-200">
-    <div class="app-bg flex">
-        @include('layouts.sidebar')
+<div class="app-bg flex">
+    @include('layouts.sidebar')
 
-        <div class="flex-1 lg:ml-72 min-h-screen flex flex-col min-w-0">
-            @include('layouts.topbar')
+    {{-- Konten kanan: digeser sebesar lebar sidebar di desktop (lg:ml-72).
+         min-w-0 wajib supaya child flex (mis. tabel scroll) tidak memaksa overflow. --}}
+    <div class="flex-1 lg:ml-72 min-h-screen flex flex-col min-w-0">
+        @include('layouts.topbar')
 
-            @isset($header)
-                <header class="px-3 sm:px-6 lg:px-10 pt-4 sm:pt-6">
-                    <div class="glass px-4 sm:px-5 py-3 sm:py-4">
-                        {{ $header }}
-                    </div>
-                </header>
-            @endisset
+        @isset($header)
+            <header class="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+                <div class="glass px-4 sm:px-5 py-3 sm:py-4">
+                    {{ $header }}
+                </div>
+            </header>
+        @endisset
 
-            <main class="flex-1 px-3 sm:px-6 lg:px-10 py-4 sm:py-6">
+        <main class="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            @if (session('success'))
+                <div class="glass border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-900/30 px-4 py-3 mb-5 text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
+                    <x-icon name="check" class="w-5 h-5"/> <span>{{ session('success') }}</span>
+                </div>
+            @endif
+            @if (session('error'))
+                <div class="glass border-rose-200/60 bg-rose-50/60 dark:bg-rose-900/30 px-4 py-3 mb-5 text-rose-700 dark:text-rose-200 flex items-center gap-2">
+                    <x-icon name="close" class="w-5 h-5"/> <span>{{ session('error') }}</span>
+                </div>
+            @endif
 
-                @if (session('success'))
-                    <div class="glass border-emerald-200/60 bg-emerald-50/60 dark:bg-emerald-900/30 px-4 py-3 mb-5 text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
-                        <x-icon name="check" class="w-5 h-5"/> <span>{{ session('success') }}</span>
-                    </div>
-                @endif
-                @if (session('error'))
-                    <div class="glass border-rose-200/60 bg-rose-50/60 dark:bg-rose-900/30 px-4 py-3 mb-5 text-rose-700 dark:text-rose-200 flex items-center gap-2">
-                        <x-icon name="close" class="w-5 h-5"/> <span>{{ session('error') }}</span>
-                    </div>
-                @endif
+            {{ $slot }}
+        </main>
 
-                {{ $slot }}
-            </main>
-
-            <footer class="px-4 sm:px-6 lg:px-10 pb-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                © {{ now()->year }} {{ $appName }} v{{ config('app.version') }} • Platform pembelajaran
-            </footer>
-        </div>
+        <footer class="px-4 sm:px-6 lg:px-8 pb-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            © {{ now()->year }} {{ $appName }} v{{ config('app.version') }} • Platform pembelajaran
+        </footer>
     </div>
+</div>
 </body>
 </html>

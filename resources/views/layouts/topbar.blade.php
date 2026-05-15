@@ -1,7 +1,15 @@
 @php $u = auth()->user(); @endphp
-<header class="sticky top-0 z-20 px-3 sm:px-6 lg:px-10 pt-3 sm:pt-4">
+{{--
+    Topbar sticky di tepi atas konten kanan.
+    z-20 cukup untuk konten biasa; modal pakai z-2000 (lihat modal-glass).
+    Padding horizontal mengikuti main (px-4 sm:px-6 lg:px-8) — tidak lagi terlalu jauh ke kanan.
+--}}
+<header class="sticky top-0 z-20 px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 pb-2
+               bg-gradient-to-b from-white/70 to-transparent dark:from-slate-950/60 dark:to-transparent
+               backdrop-blur-md">
     <div class="glass flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5">
-        <button type="button" class="lg:hidden btn-ghost p-2 shrink-0" @click="sidebarOpen = !sidebarOpen" aria-label="Buka menu">
+        <button type="button" class="lg:hidden btn-ghost p-2 shrink-0"
+                @click="sidebarOpen = !sidebarOpen" aria-label="Buka menu">
             <x-icon name="menu-list" class="w-5 h-5"/>
         </button>
 
@@ -27,14 +35,15 @@
                 @elseif($u->isStudent()) Siswa
                 @endif
             </span>
-            <a href="{{ route('profile.edit') }}" class="flex items-center gap-2 px-1.5 sm:px-2 py-1.5 rounded-xl hover:bg-white/60 dark:hover:bg-white/10 transition min-w-0">
-                <img src="{{ $u->profile_photo_url }}" class="w-8 h-8 rounded-full ring-2 ring-emerald-200 dark:ring-emerald-700/40 object-cover shrink-0" alt="">
+            <a href="{{ route('profile.edit') }}"
+               class="flex items-center gap-2 px-1.5 sm:px-2 py-1.5 rounded-xl hover:bg-white/60 dark:hover:bg-white/10 transition min-w-0">
+                <img src="{{ $u->profile_photo_url }}"
+                     class="w-8 h-8 rounded-full ring-2 ring-emerald-200 dark:ring-emerald-700/40 object-cover shrink-0" alt="">
                 <span class="hidden sm:inline text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[10rem]">{{ $u->name }}</span>
             </a>
         </div>
     </div>
 </header>
-
 
 <script>
     function themeToggle() {

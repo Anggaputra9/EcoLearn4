@@ -25,46 +25,69 @@ class AiKeyController extends Controller
     public function store(Request $request, AIService $ai): RedirectResponse
     {
         $data = $request->validate([
-            'label'              => 'required|string|max:120',
-            'provider'           => 'required|in:'.implode(',', array_keys($ai->providers())),
-            'model'              => 'nullable|string|max:120',
-            'api_key'            => 'required|string|max:512',
-            'priority'           => 'required|integer|min:0|max:9999',
-            'is_active'          => 'sometimes|boolean',
-            'quota_limit'        => 'nullable|integer|min:0',
-            'quota_reset_period' => 'required|in:none,daily,monthly',
+            'label'    => 'required|string|max:120',
+            'provider' => 'required|in:'.implode(',', array_keys($ai->providers())),
+            'model'    => 'nullable|string|max:120',
+            'api_key'  => 'required|string|max:512',
+            'priority' => 'nullable|integer|min:0|max:9999',
+            'is_active'=> 'sometimes|boolean',
         ]);
+
+        // Auto: kuota & periode reset diisi otomatis sesuai default tier free.
+        [$defLimit, $defPeriod] = AiKey::defaultQuotaFor($data['provider']);
+        $data['quota_limit']        = $defLimit;
+        $data['quota_reset_period'] = $defPeriod;
+        $data['quota_used']         = 0;
+        $data['quota_reset_at']     = $this->nextResetAt($defPeriod);
+
+        // Auto: prioritas = posisi terakhir untuk provider ini.
+        $data['priority'] = $request->filled('priority')
+            ? (int) $data['priority']
+            : (int) (AiKey::where('provider', $data['provider'])->max('priority') ?? -1) + 1;
+
         $data['is_active'] = (bool) $request->boolean('is_active', true);
-        $data['quota_used'] = 0;
-        $data['quota_reset_at'] = match ($data['quota_reset_period']) {
-            'daily'   => now()->addDay()->startOfDay(),
-            'monthly' => now()->addMonth()->startOfMonth(),
-            default   => null,
-        };
 
         AiKey::create($data);
-        return back()->with('success', 'API key berhasil ditambahkan.');
+        return back()->with('success', 'API key ditambahkan dengan kuota otomatis ('.number_format($defLimit).' / '.$defPeriod.').');
     }
 
     public function update(Request $request, AiKey $aiKey, AIService $ai): RedirectResponse
     {
         $data = $request->validate([
-            'label'              => 'required|string|max:120',
-            'provider'           => 'required|in:'.implode(',', array_keys($ai->providers())),
-            'model'              => 'nullable|string|max:120',
-            'api_key'            => 'nullable|string|max:512',     // kosong = tetap
-            'priority'           => 'required|integer|min:0|max:9999',
-            'is_active'          => 'sometimes|boolean',
-            'quota_limit'        => 'nullable|integer|min:0',
-            'quota_reset_period' => 'required|in:none,daily,monthly',
+            'label'    => 'required|string|max:120',
+            'provider' => 'required|in:'.implode(',', array_keys($ai->providers())),
+            'model'    => 'nullable|string|max:120',
+            'api_key'  => 'nullable|string|max:512',     // kosong = tetap
+            'priority' => 'nullable|integer|min:0|max:9999',
+            'is_active'=> 'sometimes|boolean',
         ]);
-        $data['is_active'] = (bool) $request->boolean('is_active', true);
 
-        if (empty($data['api_key'])) unset($data['api_key']); // jangan timpa kalau kosong
+        // Jika provider berubah, sesuaikan ulang kuota otomatis.
+        if ($aiKey->provider !== $data['provider']) {
+            [$defLimit, $defPeriod] = AiKey::defaultQuotaFor($data['provider']);
+            $data['quota_limit']        = $defLimit;
+            $data['quota_reset_period'] = $defPeriod;
+            $data['quota_reset_at']     = $this->nextResetAt($defPeriod);
+        }
+
+        $data['is_active'] = (bool) $request->boolean('is_active', true);
+        $data['priority']  = $request->filled('priority') ? (int) $data['priority'] : $aiKey->priority;
+
+        if (empty($data['api_key'])) unset($data['api_key']);
 
         $aiKey->update($data);
         return back()->with('success', 'API key diperbarui.');
     }
+
+    private function nextResetAt(string $period): ?\Illuminate\Support\Carbon
+    {
+        return match ($period) {
+            'daily'   => now()->addDay()->startOfDay(),
+            'monthly' => now()->addMonth()->startOfMonth(),
+            default   => null,
+        };
+    }
+
 
     public function destroy(AiKey $aiKey): RedirectResponse
     {

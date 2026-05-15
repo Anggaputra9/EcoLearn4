@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AiKey;
 use App\Models\Setting;
 use App\Services\AIService;
 use Illuminate\Http\RedirectResponse;
@@ -11,19 +12,25 @@ use Illuminate\View\View;
 
 class SettingController extends Controller
 {
-    public function edit(AIService $ai): View
+    /**
+     * Halaman gabungan: Konfigurasi AI Default + API Key Pool dalam satu view (admin/ai.blade.php).
+     */
+    public function hub(AIService $ai): View
     {
         $provider = $ai->defaultProvider();
-        $models = $ai->listModels($provider);
+        $models   = $ai->listModels($provider);
         if (empty($models)) $models = $ai->staticModelList($provider);
 
-        return view('admin.settings', [
+        $keys = AiKey::orderBy('provider')->orderBy('priority')->orderBy('id')->get();
+
+        return view('admin.ai', [
             'providers'   => $ai->providers(),
             'provider'    => $provider,
             'model'       => $ai->defaultModel($provider),
             'models'      => $models,
             'staticLists' => collect($ai->providers())->mapWithKeys(fn ($n, $p) => [$p => $ai->staticModelList($p)])->all(),
             'aiService'   => $ai,
+            'keys'        => $keys,
         ]);
     }
 
@@ -39,7 +46,7 @@ class SettingController extends Controller
         if ($data['provider'] === 'gemini') {
             Setting::put('gemini.model', $data['model'], 'gemini');
         }
-        return back()->with('success', 'Pengaturan AI default disimpan.');
+        return redirect('/admin/ai?tab=general')->with('success', 'Pengaturan AI default disimpan.');
     }
 
     public function test(AIService $ai): RedirectResponse

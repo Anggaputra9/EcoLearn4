@@ -65,4 +65,29 @@ class AiKey extends Model
         };
         $this->update(['quota_used' => 0, 'quota_reset_at' => $next]);
     }
+
+    /**
+     * Limit kuota default berbasis tier free public masing-masing provider.
+     * Dipakai saat admin tidak mengisi kolom limit secara manual.
+     *
+     *   - gemini      : Free tier umumnya ~1.500 request/hari (1.5/2.0 Flash)
+     *   - openai      : Tergantung kredit; default 10.000 / bulan agar konservatif
+     *   - anthropic   : Default 5.000 / bulan
+     *   - openrouter  : 200 / hari untuk model `:free`, default ke 6.000 / bulan
+     *   - groq        : 14.400 / hari free tier; ambil floor 10.000 / hari
+     */
+    public static function defaultQuotaFor(string $provider): array
+    {
+        // [limit, period]
+        return match ($provider) {
+            'gemini'     => [1500,  'daily'],
+            'openai'     => [10000, 'monthly'],
+            'anthropic'  => [5000,  'monthly'],
+            'openrouter' => [6000,  'monthly'],
+            'groq'       => [10000, 'daily'],
+            default      => [1000,  'monthly'],
+        };
+    }
 }
+
+

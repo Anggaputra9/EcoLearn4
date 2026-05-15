@@ -68,12 +68,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/app',  [AdminAppController::class, 'edit'])->name('admin.app');
         Route::put('/app',  [AdminAppController::class, 'update']);
 
-        Route::get('/settings',       [SettingController::class, 'edit'])->name('admin.settings');
-        Route::put('/settings',       [SettingController::class, 'update']);
-        Route::post('/settings/test', [SettingController::class, 'test'])->name('admin.settings.test');
+        // === Konfigurasi AI (gabungan: provider/model + API Key Pool) ===
+        Route::get('/ai',          [SettingController::class, 'hub'])->name('admin.ai');
+        Route::put('/ai/general',  [SettingController::class, 'update'])->name('admin.ai.update');
+        Route::post('/ai/test',    [SettingController::class, 'test'])->name('admin.ai.test');
 
-        // AI Key Pool
-        Route::get('/ai-keys',                       [AiKeyController::class, 'index'])->name('admin.aiKeys');
+        // Backward compat — tetap arahkan URL lama ke halaman gabungan
+        Route::get('/settings',       fn () => redirect('/admin/ai?tab=general'))->name('admin.settings');
+        Route::get('/ai-keys',        fn () => redirect('/admin/ai?tab=keys'))->name('admin.aiKeys');
+        Route::put('/settings',       [SettingController::class, 'update']);
+        Route::post('/settings/test', [SettingController::class, 'test']);
+
+        // CRUD API key (endpoint tetap sama untuk kompatibilitas form)
         Route::post('/ai-keys',                      [AiKeyController::class, 'store']);
         Route::put('/ai-keys/{aiKey}',               [AiKeyController::class, 'update']);
         Route::delete('/ai-keys/{aiKey}',            [AiKeyController::class, 'destroy']);
@@ -81,18 +87,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/ai-keys/{aiKey}/test',         [AiKeyController::class, 'test']);
         Route::post('/ai-keys/{aiKey}/reset-quota',  [AiKeyController::class, 'resetQuota']);
 
-        // Mail (provider default + tes kirim)
-        Route::get('/mail',       [MailController::class, 'edit'])->name('admin.mail');
+        // === Email & Notifikasi (gabungan: provider mail + Mail Key Pool) ===
+        Route::get('/email',          [MailController::class, 'hub'])->name('admin.email');
+        Route::put('/email/general',  [MailController::class, 'update'])->name('admin.email.update');
+        Route::post('/email/test',    [MailController::class, 'test'])->name('admin.email.test');
+
+        // Backward compat
+        Route::get('/mail',       fn () => redirect('/admin/email?tab=general'))->name('admin.mail');
+        Route::get('/mail-keys',  fn () => redirect('/admin/email?tab=keys'))->name('admin.mailKeys');
         Route::put('/mail',       [MailController::class, 'update']);
         Route::post('/mail/test', [MailController::class, 'test']);
 
-        // Mail Key Pool
-        Route::get('/mail-keys',                       [MailKeyController::class, 'index'])->name('admin.mailKeys');
+        // CRUD mail key
         Route::post('/mail-keys',                      [MailKeyController::class, 'store']);
         Route::put('/mail-keys/{mailKey}',             [MailKeyController::class, 'update']);
         Route::delete('/mail-keys/{mailKey}',          [MailKeyController::class, 'destroy']);
         Route::post('/mail-keys/reorder',              [MailKeyController::class, 'reorder']);
         Route::post('/mail-keys/{mailKey}/reset-quota',[MailKeyController::class, 'resetQuota']);
+
 
         Route::get('/changelogs',                  [ChangelogController::class, 'index'])->name('admin.changelogs');
         Route::post('/changelogs',                 [ChangelogController::class, 'store']);

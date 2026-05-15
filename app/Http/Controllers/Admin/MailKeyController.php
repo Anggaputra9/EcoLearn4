@@ -24,45 +24,68 @@ class MailKeyController extends Controller
     {
         $providers = collect($mail->providers())->except('smtp')->keys()->all();
         $data = $request->validate([
-            'label'              => 'required|string|max:120',
-            'provider'           => 'required|in:'.implode(',', $providers),
-            'api_key'            => 'required|string|max:512',
-            'api_secret'         => 'nullable|string|max:512',
-            'priority'           => 'required|integer|min:0|max:9999',
-            'is_active'          => 'sometimes|boolean',
-            'quota_limit'        => 'nullable|integer|min:0',
-            'quota_reset_period' => 'required|in:none,daily,monthly',
+            'label'      => 'required|string|max:120',
+            'provider'   => 'required|in:'.implode(',', $providers),
+            'api_key'    => 'required|string|max:512',
+            'api_secret' => 'nullable|string|max:512',
+            'priority'   => 'nullable|integer|min:0|max:9999',
+            'is_active'  => 'sometimes|boolean',
         ]);
+
+        [$defLimit, $defPeriod] = MailKey::defaultQuotaFor($data['provider']);
+        $data['quota_limit']        = $defLimit;
+        $data['quota_reset_period'] = $defPeriod;
+        $data['quota_used']         = 0;
+        $data['quota_reset_at']     = $this->nextResetAt($defPeriod);
+
+        $data['priority'] = $request->filled('priority')
+            ? (int) $data['priority']
+            : (int) (MailKey::where('provider', $data['provider'])->max('priority') ?? -1) + 1;
+
         $data['is_active'] = (bool) $request->boolean('is_active', true);
-        $data['quota_used'] = 0;
-        $data['quota_reset_at'] = match ($data['quota_reset_period']) {
-            'daily'   => now()->addDay()->startOfDay(),
-            'monthly' => now()->addMonth()->startOfMonth(),
-            default   => null,
-        };
+
         MailKey::create($data);
-        return back()->with('success', 'Mail key ditambahkan.');
+        return back()->with('success', 'Mail key ditambahkan dengan kuota otomatis ('.number_format($defLimit).' / '.$defPeriod.').');
     }
 
     public function update(Request $request, MailKey $mailKey, MailService $mail): RedirectResponse
     {
         $providers = collect($mail->providers())->except('smtp')->keys()->all();
         $data = $request->validate([
-            'label'              => 'required|string|max:120',
-            'provider'           => 'required|in:'.implode(',', $providers),
-            'api_key'            => 'nullable|string|max:512',
-            'api_secret'         => 'nullable|string|max:512',
-            'priority'           => 'required|integer|min:0|max:9999',
-            'is_active'          => 'sometimes|boolean',
-            'quota_limit'        => 'nullable|integer|min:0',
-            'quota_reset_period' => 'required|in:none,daily,monthly',
+            'label'      => 'required|string|max:120',
+            'provider'   => 'required|in:'.implode(',', $providers),
+            'api_key'    => 'nullable|string|max:512',
+            'api_secret' => 'nullable|string|max:512',
+            'priority'   => 'nullable|integer|min:0|max:9999',
+            'is_active'  => 'sometimes|boolean',
         ]);
+
+        if ($mailKey->provider !== $data['provider']) {
+            [$defLimit, $defPeriod] = MailKey::defaultQuotaFor($data['provider']);
+            $data['quota_limit']        = $defLimit;
+            $data['quota_reset_period'] = $defPeriod;
+            $data['quota_reset_at']     = $this->nextResetAt($defPeriod);
+        }
+
         $data['is_active'] = (bool) $request->boolean('is_active', true);
+        $data['priority']  = $request->filled('priority') ? (int) $data['priority'] : $mailKey->priority;
+
         if (empty($data['api_key']))    unset($data['api_key']);
         if (empty($data['api_secret'])) unset($data['api_secret']);
+
         $mailKey->update($data);
         return back()->with('success', 'Mail key diperbarui.');
     }
+
+    private function nextResetAt(string $period): ?\Illuminate\Support\Carbon
+    {
+        return match ($period) {
+            'daily'   => now()->addDay()->startOfDay(),
+            'monthly' => now()->addMonth()->startOfMonth(),
+            default   => null,
+        };
+    }
+
 
     public function destroy(MailKey $mailKey): RedirectResponse
     {

@@ -63,4 +63,24 @@ class MailKey extends Model
         };
         $this->update(['quota_used' => 0, 'quota_reset_at' => $next]);
     }
+
+    /**
+     * Limit kuota default berbasis tier free publik tiap provider mail.
+     * Dipakai saat admin tidak mengisi kolom limit manual.
+     *
+     *   - brevo      : 300 email/hari free
+     *   - mailersend : 3.000 email/bulan trial / hosted free
+     *   - sendpulse  : 12.000 email/bulan free
+     */
+    public static function defaultQuotaFor(string $provider): array
+    {
+        return match ($provider) {
+            'brevo'      => [300,    'daily'],
+            'mailersend' => [3000,   'monthly'],
+            'sendpulse'  => [12000,  'monthly'],
+            default      => [1000,   'monthly'],
+        };
+    }
 }
+
+

@@ -2,32 +2,48 @@
     $u = auth()->user();
     $appName = \App\Models\Setting::get('app.name', config('app.name', 'Eko-Scribe'));
 
-    // Susun menu sesuai role (sesuai task v0.3: Buat Materi pakai modal di halaman materi)
+    // Susun menu sesuai role.
+    // Catatan: untuk admin, menu "Konfigurasi AI" sekarang gabungan
+    // (provider/model default + API Key Pool). Begitu juga "Email & Notif"
+    // (provider mail + Mail Key Pool).
     $items = [];
     if ($u->isAdmin()) {
         $items = [
-            ['Beranda',         '/dashboard',          'home'],
-            ['Kelola Pengguna', '/admin/users',        'users'],
-            ['Kelola Menu',     '/admin/menus',        'menu-list'],
-            ['Pengaturan App',  '/admin/app',          'cog'],
-            ['Konfigurasi AI',  '/admin/settings',     'sparkles'],
-            ['API Key Pool',    '/admin/ai-keys',      'key'],
-            ['Email & Notif',   '/admin/mail',         'bell'],
-            ['Mail Key Pool',   '/admin/mail-keys',    'send'],
-            ['Changelog',       '/admin/changelogs',   'history'],
+            ['Beranda',          '/dashboard',         'home'],
+            ['Kelola Pengguna',  '/admin/users',       'users'],
+            ['Kelola Menu',      '/admin/menus',       'menu-list'],
+            ['Pengaturan App',   '/admin/app',         'cog'],
+            ['Konfigurasi AI',   '/admin/ai',          'sparkles'],
+            ['Email & Notif',    '/admin/email',       'bell'],
+            ['Changelog',        '/admin/changelogs',  'history'],
         ];
     } elseif ($u->isTeacher()) {
         $items = [
-            ['Beranda',          '/dashboard',                  'home'],
-            ['Materi Saya',      '/teacher',                    'book'],
-            ['Kelas Saya',       '/teacher/classrooms',         'school'],
+            ['Beranda',          '/dashboard',                 'home'],
+            ['Materi Saya',      '/teacher',                   'book'],
+            ['Kelas Saya',       '/teacher/classrooms',        'school'],
         ];
     } elseif ($u->isStudent()) {
         $items = [
-            ['Beranda',       '/dashboard',          'home'],
-            ['Daftar Materi', '/student',            'book'],
-            ['Kelas Saya',    '/student/classrooms', 'school'],
+            ['Beranda',          '/dashboard',          'home'],
+            ['Daftar Materi',    '/student',            'book'],
+            ['Kelas Saya',       '/student/classrooms', 'school'],
         ];
+    }
+
+    // Hitung index item yang aktif berdasarkan "longest-prefix-match",
+    // sehingga /teacher/classrooms tidak ikut mengaktifkan /teacher.
+    $currentPath = '/'.trim(request()->path(), '/');
+    $activeIdx   = null;
+    $activeLen   = -1;
+    foreach ($items as $i => [$lbl, $url, $ic]) {
+        $itemPath = '/'.trim($url, '/');
+        if ($currentPath === $itemPath || str_starts_with($currentPath, $itemPath.'/')) {
+            if (strlen($itemPath) > $activeLen) {
+                $activeLen = strlen($itemPath);
+                $activeIdx = $i;
+            }
+        }
     }
 @endphp
 
@@ -48,20 +64,15 @@
 
         <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
             <p class="px-4 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mb-2">Navigasi</p>
-            @foreach($items as [$label, $url, $icon])
-                @php
-                    $clean = trim($url, '/');
-                    $isActive = request()->is($clean) || request()->is($clean.'/*');
-                @endphp
+            @foreach($items as $i => [$label, $url, $icon])
                 <a href="{{ url($url) }}"
                    @click="sidebarOpen = false"
-                   class="sidebar-link {{ $isActive ? 'active' : '' }}">
+                   class="sidebar-link {{ $i === $activeIdx ? 'active' : '' }}">
                     <x-icon :name="$icon" class="w-5 h-5 shrink-0"/>
                     <span class="truncate">{{ $label }}</span>
                 </a>
             @endforeach
         </nav>
-
 
         <div class="border-t border-white/40 dark:border-white/10 p-3">
             <a href="{{ route('profile.edit') }}"

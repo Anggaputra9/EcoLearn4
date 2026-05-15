@@ -34,26 +34,17 @@
         <input name="api_secret" type="password" autocomplete="off" class="input-glass" placeholder="{{ $isEdit ? '•••• tersimpan' : '' }}">
     </div>
 
-    <div class="grid sm:grid-cols-3 gap-3">
-        <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Prioritas</label>
-            <input type="number" name="priority" value="{{ old('priority', $isEdit ? $k->priority : 0) }}" min="0" max="9999" class="input-glass">
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Limit Kuota</label>
-            <input type="number" name="quota_limit" value="{{ old('quota_limit', $isEdit ? $k->quota_limit : '') }}" min="0" placeholder="kosong = ∞" class="input-glass">
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Reset Kuota</label>
-            <select name="quota_reset_period" class="input-glass">
-                @foreach(['none' => 'Tidak otomatis', 'daily' => 'Harian', 'monthly' => 'Bulanan'] as $v => $lbl)
-                    <option value="{{ $v }}" @selected(($isEdit ? $k->quota_reset_period : 'monthly') === $v)>{{ $lbl }}</option>
-                @endforeach
-            </select>
-        </div>
+    <div>
+        <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Prioritas</label>
+        <input type="number" name="priority" value="{{ old('priority', $isEdit ? $k->priority : '') }}"
+               min="0" max="9999" placeholder="kosong = otomatis (paling akhir)" class="input-glass sm:max-w-xs">
+        <p class="text-[11px] text-slate-500 mt-1">
+            Kuota & periode reset diatur otomatis sesuai tier free provider mail.
+        </p>
     </div>
 
     <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 mt-1">
+
         <input type="hidden" name="is_active" value="0">
         <input type="checkbox" name="is_active" value="1" class="rounded" {{ ($isEdit ? $k->is_active : true) ? 'checked' : '' }}>
         Aktif

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\MailKey;
 use App\Models\Setting;
 use App\Services\MailService;
 use Illuminate\Http\RedirectResponse;
@@ -11,16 +12,23 @@ use Illuminate\View\View;
 
 class MailController extends Controller
 {
-    public function edit(MailService $mail): View
+    /**
+     * Halaman gabungan: Konfigurasi email default + Mail Key Pool (admin/email.blade.php).
+     */
+    public function hub(MailService $mail): View
     {
-        return view('admin.mail', [
-            'providers' => $mail->providers(),
-            'current'   => $mail->provider(),
-            'fromEmail' => $mail->fromEmail(),
-            'fromName'  => $mail->fromName(),
-            'brevoSet'      => (bool) Setting::get('mail.brevo.api_key'),
-            'mailerSet'     => (bool) Setting::get('mail.mailersend.api_key'),
-            'sendpulseSet'  => (bool) Setting::get('mail.sendpulse.client_id'),
+        $keys = MailKey::orderBy('provider')->orderBy('priority')->orderBy('id')->get();
+        return view('admin.email', [
+            'providers'    => $mail->providers(),
+            // Mail Key Pool tidak menyertakan SMTP (tidak ada API key)
+            'keyProviders' => collect($mail->providers())->except('smtp')->all(),
+            'current'      => $mail->provider(),
+            'fromEmail'    => $mail->fromEmail(),
+            'fromName'     => $mail->fromName(),
+            'brevoSet'     => (bool) Setting::get('mail.brevo.api_key'),
+            'mailerSet'    => (bool) Setting::get('mail.mailersend.api_key'),
+            'sendpulseSet' => (bool) Setting::get('mail.sendpulse.client_id'),
+            'keys'         => $keys,
         ]);
     }
 
@@ -46,7 +54,7 @@ class MailController extends Controller
         if (! empty($data['sendpulse_client_id']))     Setting::put('mail.sendpulse.client_id', $data['sendpulse_client_id'], 'mail');
         if (! empty($data['sendpulse_client_secret'])) Setting::put('mail.sendpulse.client_secret', $data['sendpulse_client_secret'], 'mail', true);
 
-        return back()->with('success', 'Konfigurasi email disimpan.');
+        return redirect('/admin/email?tab=general')->with('success', 'Konfigurasi email disimpan.');
     }
 
     public function test(Request $request, MailService $mail): RedirectResponse

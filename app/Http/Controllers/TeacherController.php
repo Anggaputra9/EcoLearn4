@@ -29,14 +29,87 @@ class TeacherController extends Controller
             }))
             ->when($level, fn ($qq) => $qq->where('level', $level))
             ->when($classroomId, fn ($qq) => $qq->where('classroom_id', $classroomId))
+            ->orderByRaw('meeting_number IS NULL, meeting_number ASC')
             ->latest()
             ->paginate(9)
             ->withQueryString();
 
         $classrooms = Classroom::where('teacher_id', Auth::id())->orderBy('name')->get();
 
-        return view('teacher.index', compact('materials', 'q', 'level', 'classrooms', 'classroomId'));
+        // Untuk auto-iterate nomor pertemuan di modal "Buat Materi".
+        // Default: skala "tanpa kelas" milik guru ini.
+        $nextMeeting = Material::nextMeetingNumber(Auth::id(), null);
+
+        // Hitung sisa materi yang ada di histori (sudah dihapus tapi masih bisa di-restore)
+        $trashedCount = Material::onlyTrashed()->where('teacher_id', Auth::id())->count();
+
+        return view('teacher.index', compact(
+            'materials', 'q', 'level', 'classrooms', 'classroomId', 'nextMeeting', 'trashedCount'
+        ));
     }
+
+    /**
+     * AJAX: kembalikan nomor pertemuan berikutnya berdasarkan classroom_id.
+     * Dipakai modal "Buat Materi" untuk auto-iterate saat guru ganti kelas.
+     */
+    public function nextMeetingNumber(Request $request): JsonResponse
+    {
+        $classroomId = $request->input('classroom_id') ?: null;
+        if ($classroomId) {
+            $own = Classroom::where('id', $classroomId)->where('teacher_id', Auth::id())->exists();
+            if (! $own) abort(403);
+        }
+        return response()->json([
+            'next' => Material::nextMeetingNumber(Auth::id(), $classroomId ? (int) $classroomId : null),
+        ]);
+    }
+
+    /**
+     * Halaman "Histori Materi" — termasuk yang sudah dihapus.
+     * Mirip log history: guru bisa lihat bekas materi lama, restore, atau hapus permanen.
+     */
+    public function materialHistory(Request $request): View
+    {
+        $q = trim((string) $request->get('q', ''));
+        $classroomId = $request->get('classroom_id');
+        $scope = $request->get('scope', 'all'); // all | active | trashed
+
+        $base = Material::withTrashed()
+            ->with(['questions', 'classroom'])
+            ->where('teacher_id', Auth::id());
+
+        if ($scope === 'active') $base->whereNull('deleted_at');
+        if ($scope === 'trashed') $base->whereNotNull('deleted_at');
+
+        $materials = $base
+            ->when($q, fn ($qq) => $qq->where(function ($w) use ($q) {
+                $w->where('title', 'like', "%$q%")->orWhere('topic', 'like', "%$q%");
+            }))
+            ->when($classroomId, fn ($qq) => $qq->where('classroom_id', $classroomId))
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->withQueryString();
+
+        $classrooms = Classroom::where('teacher_id', Auth::id())->orderBy('name')->get();
+
+        return view('teacher.material-history', compact('materials', 'q', 'classrooms', 'classroomId', 'scope'));
+    }
+
+    public function restoreMaterial(int $id): RedirectResponse
+    {
+        $material = Material::onlyTrashed()->where('teacher_id', Auth::id())->findOrFail($id);
+        $material->restore();
+        return back()->with('success', 'Materi "'.$material->title.'" berhasil dipulihkan.');
+    }
+
+    public function forceDestroyMaterial(int $id): RedirectResponse
+    {
+        $material = Material::withTrashed()->where('teacher_id', Auth::id())->findOrFail($id);
+        $title = $material->title;
+        $material->forceDelete();
+        return back()->with('success', 'Materi "'.$title.'" dihapus permanen.');
+    }
+
 
     /**
      * Endpoint AJAX dipakai modal "Buat Materi" → mengembalikan JSON preview
@@ -70,26 +143,42 @@ class TeacherController extends Controller
     public function storeMaterial(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'title'        => 'required|string|max:255',
-            'topic'        => 'required|string|max:255',
-            'level'        => 'required|in:SD,SMP,SMA,Umum',
-            'content'      => 'required|string',
-            'classroom_id' => 'nullable|integer|exists:classrooms,id',
-            'is_published' => 'sometimes|boolean',
+            'title'          => 'required|string|max:255',
+            'topic'          => 'required|string|max:255',
+            'level'          => 'required|in:SD,SMP,SMA,Umum',
+            'content'        => 'required|string',
+            'classroom_id'   => 'nullable|integer|exists:classrooms,id',
+            'meeting_number' => 'nullable|integer|min:1|max:9999',
+            'is_published'   => 'sometimes|boolean',
         ]);
 
-        if (! empty($data['classroom_id'])) {
-            $own = Classroom::where('id', $data['classroom_id'])->where('teacher_id', Auth::id())->exists();
+        $classroomId = ! empty($data['classroom_id']) ? (int) $data['classroom_id'] : null;
+        if ($classroomId) {
+            $own = Classroom::where('id', $classroomId)->where('teacher_id', Auth::id())->exists();
             if (! $own) abort(403, 'Kelas bukan milik Anda.');
         }
 
-        $material = Material::create($data + [
-            'teacher_id'   => Auth::id(),
-            'is_published' => (bool) $request->boolean('is_published', true),
+        // Auto-iterate kalau guru tidak isi nomor pertemuan.
+        $meeting = $data['meeting_number'] ?? null;
+        if (! $meeting) {
+            $meeting = Material::nextMeetingNumber(Auth::id(), $classroomId);
+        }
+
+        $material = Material::create([
+            'teacher_id'     => Auth::id(),
+            'classroom_id'   => $classroomId,
+            'title'          => $data['title'],
+            'topic'          => $data['topic'],
+            'level'          => $data['level'],
+            'content'        => $data['content'],
+            'meeting_number' => $meeting,
+            'is_published'   => (bool) $request->boolean('is_published', true),
         ]);
 
-        return redirect()->route('teacher.materials.show', $material)->with('success', 'Materi berhasil disimpan.');
+        return redirect()->route('teacher.materials.show', $material)
+            ->with('success', 'Materi pertemuan ke-'.$meeting.' berhasil disimpan.');
     }
+
 
     public function showMaterial(Material $material): View
     {
@@ -113,12 +202,13 @@ class TeacherController extends Controller
     {
         $this->authorizeOwnership($material);
         $data = $request->validate([
-            'title'        => 'required|string|max:255',
-            'topic'        => 'required|string|max:255',
-            'level'        => 'required|in:SD,SMP,SMA,Umum',
-            'content'      => 'required|string',
-            'classroom_id' => 'nullable|integer|exists:classrooms,id',
-            'is_published' => 'sometimes|boolean',
+            'title'          => 'required|string|max:255',
+            'topic'          => 'required|string|max:255',
+            'level'          => 'required|in:SD,SMP,SMA,Umum',
+            'content'        => 'required|string',
+            'classroom_id'   => 'nullable|integer|exists:classrooms,id',
+            'meeting_number' => 'nullable|integer|min:1|max:9999',
+            'is_published'   => 'sometimes|boolean',
         ]);
         if (! empty($data['classroom_id'])) {
             $own = Classroom::where('id', $data['classroom_id'])->where('teacher_id', Auth::id())->exists();
@@ -126,9 +216,13 @@ class TeacherController extends Controller
         }
         $data['is_published'] = (bool) $request->boolean('is_published', true);
 
+        // Pastikan meeting_number selalu masuk (boleh null = "tanpa nomor pertemuan").
+        $data['meeting_number'] = $data['meeting_number'] ?? null;
+
         $material->update($data);
         return redirect()->route('teacher.materials.show', $material)->with('success', 'Materi berhasil diperbarui.');
     }
+
 
     public function destroyMaterial(Material $material): RedirectResponse
     {

@@ -3,6 +3,9 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
+                    @if($material->meeting_number)
+                        <span class="badge badge-amber">Pertemuan {{ $material->meeting_number }}</span>
+                    @endif
                     <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{{ $material->title }}</h2>
                     @if($material->classroom)
                         <span class="badge badge-violet">{{ $material->classroom->name }}</span>
@@ -10,6 +13,7 @@
                 </div>
                 <p class="text-sm text-slate-500">{{ $material->topic }}</p>
             </div>
+
             <div class="flex items-center gap-2 flex-wrap">
                 <a href="{{ route('teacher.materials.pdf', $material) }}" class="btn-secondary"><x-icon name="printer" class="w-4 h-4"/> Unduh PDF</a>
                 <a href="{{ route('teacher.materials.edit', $material) }}" class="btn-secondary"><x-icon name="pencil" class="w-4 h-4"/> Edit</a>
@@ -220,7 +224,9 @@
                     <input type="hidden" name="topic" value="{{ $material->topic }}">
                     <input type="hidden" name="level" value="{{ $material->level }}">
                     <input type="hidden" name="content" value="{{ $material->content }}">
+                    <input type="hidden" name="meeting_number" value="{{ $material->meeting_number }}">
                     <input type="hidden" name="is_published" value="{{ $material->is_published ? 1 : 0 }}">
+
                     <select name="classroom_id" class="input-glass flex-1">
                         <option value="">— Tanpa kelas —</option>
                         @foreach($classrooms as $c)

@@ -2,9 +2,15 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="min-w-0">
-                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{{ $material->title }}</h2>
+                <div class="flex items-center gap-2 flex-wrap">
+                    @if($material->meeting_number)
+                        <span class="badge badge-amber">Pertemuan {{ $material->meeting_number }}</span>
+                    @endif
+                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{{ $material->title }}</h2>
+                </div>
                 <p class="text-sm text-slate-500">{{ $material->topic }} · Oleh {{ $material->teacher->name }}</p>
             </div>
+
             <a href="{{ route('student.materials.pdf', $material) }}" class="btn-secondary">
                 <x-icon name="printer" class="w-4 h-4"/> Unduh PDF
             </a>

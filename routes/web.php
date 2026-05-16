@@ -123,16 +123,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Materi
         Route::post('/materials/generate-ajax',         [TeacherController::class, 'generateMaterialAjax'])->name('materials.generate.ajax');
+        Route::get('/materials/next-meeting',           [TeacherController::class, 'nextMeetingNumber'])->name('materials.nextMeeting');
         Route::post('/materials',                       [TeacherController::class, 'storeMaterial'])->name('materials.store');
         // Halaman create lama dihapus — workflow sekarang pakai modal di /teacher.
         // Rute disisakan agar link/bookmark lama tidak 500; arahkan ke index.
         Route::get('/materials/create',                 fn () => redirect()->route('teacher.index'))->name('materials.create');
+
+        // Histori materi (termasuk yang sudah dihapus)
+        Route::get('/materials/history',                [TeacherController::class, 'materialHistory'])->name('materials.history');
+        Route::post('/materials/{id}/restore',          [TeacherController::class, 'restoreMaterial'])->name('materials.restore')->whereNumber('id');
+        Route::delete('/materials/{id}/force',          [TeacherController::class, 'forceDestroyMaterial'])->name('materials.force')->whereNumber('id');
+
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/pdf',         [TeacherController::class, 'downloadMaterialPdf'])->name('materials.pdf');
 
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');
         Route::delete('/materials/{material}',          [TeacherController::class, 'destroyMaterial'])->name('materials.destroy');
+
 
         // Soal
         Route::post('/materials/{material}/questions',          [TeacherController::class, 'generateQuestions'])->name('questions.generate');

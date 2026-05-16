@@ -5,9 +5,17 @@
                 <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100">Materi Saya</h2>
                 <p class="text-sm text-slate-500">Materi yang telah Anda buat untuk siswa.</p>
             </div>
-            <button class="btn-primary" @click="$dispatch('open-modal', 'mat-create')">
-                <x-icon name="sparkles" class="w-4 h-4"/> Buat Materi
-            </button>
+            <div class="flex items-center gap-2 flex-wrap">
+                <a href="{{ route('teacher.materials.history') }}" class="btn-secondary">
+                    <x-icon name="clock" class="w-4 h-4"/> Histori
+                    @if(($trashedCount ?? 0) > 0)
+                        <span class="ml-1 px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-[10px] font-semibold">{{ $trashedCount }}</span>
+                    @endif
+                </a>
+                <button class="btn-primary" @click="$dispatch('open-modal', 'mat-create')">
+                    <x-icon name="sparkles" class="w-4 h-4"/> Buat Materi
+                </button>
+            </div>
         </div>
     </x-slot>
 
@@ -40,6 +48,9 @@
             @foreach($materials as $m)
                 <div class="glass p-5 flex flex-col">
                     <div class="flex items-center gap-2 flex-wrap">
+                        @if($m->meeting_number)
+                            <span class="badge badge-amber">Pertemuan {{ $m->meeting_number }}</span>
+                        @endif
                         <span class="badge badge-emerald">{{ $m->level }}</span>
                         @if($m->classroom)
                             <span class="badge badge-violet">{{ $m->classroom->name }}</span>
@@ -63,8 +74,24 @@
 
     {{-- Modal: Buat Materi (AI generate + simpan dalam satu modal) --}}
     <x-modal-glass name="mat-create" title="Buat Materi Baru" max-width="3xl">
-        <div x-data="materialCreator()" class="space-y-4">
-            <div class="grid gap-3 md:grid-cols-2">
+        <div x-data="materialCreator({{ (int)($nextMeeting ?? 1) }})" class="space-y-4">
+            <div class="grid gap-3 md:grid-cols-3">
+                <div>
+                    <label class="block text-sm font-medium mb-1">
+                        Pertemuan ke-
+                        <span class="text-xs font-normal text-slate-400">(otomatis)</span>
+                    </label>
+                    <div class="flex items-center gap-1">
+                        <input x-model.number="form.meeting_number" type="number" min="1" max="9999" class="input-glass" :placeholder="`Auto: ${suggestedMeeting}`">
+                        <button type="button" class="btn-ghost p-2" title="Pakai nomor otomatis"
+                                @click="form.meeting_number = suggestedMeeting">
+                            <x-icon name="sparkles" class="w-4 h-4"/>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1" x-show="suggestedMeeting">
+                        Saran berikutnya: <span class="font-semibold" x-text="suggestedMeeting"></span>
+                    </p>
+                </div>
                 <div class="md:col-span-2">
                     <label class="block text-sm font-medium mb-1">Judul Materi</label>
                     <input x-model="form.title" required class="input-glass" placeholder="Misal: Etika Kepedulian terhadap Bumi">
@@ -80,9 +107,9 @@
                         <option value="SMA">SMA</option><option value="Umum">Umum</option>
                     </select>
                 </div>
-                <div class="md:col-span-2">
-                    <label class="block text-sm font-medium mb-1">Tautkan ke Kelas (opsional)</label>
-                    <select x-model="form.classroom_id" class="input-glass">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Kelas (opsional)</label>
+                    <select x-model="form.classroom_id" class="input-glass" @change="refreshSuggestion()">
                         <option value="">— Tanpa kelas (publik) —</option>
                         @foreach($classrooms as $c)
                             <option value="{{ $c->id }}">{{ $c->name }}</option>
@@ -111,6 +138,7 @@
                 <input type="hidden" name="level" :value="form.level">
                 <input type="hidden" name="content" :value="form.content">
                 <input type="hidden" name="classroom_id" :value="form.classroom_id">
+                <input type="hidden" name="meeting_number" :value="form.meeting_number || ''">
                 <input type="hidden" name="is_published" value="1">
 
                 <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'mat-create')">Batal</button>
@@ -122,10 +150,27 @@
     </x-modal-glass>
 
     <script>
-        function materialCreator() {
+        function materialCreator(initialNext) {
             return {
                 loading: false, error: '',
-                form: { title: '', topic: '', level: 'SMA', classroom_id: '', content: '' },
+                suggestedMeeting: initialNext || 1,
+                form: { title: '', topic: '', level: 'SMA', classroom_id: '', content: '', meeting_number: initialNext || 1 },
+
+                async refreshSuggestion() {
+                    try {
+                        const params = new URLSearchParams();
+                        if (this.form.classroom_id) params.set('classroom_id', this.form.classroom_id);
+                        const res = await fetch('{{ route('teacher.materials.nextMeeting') }}?' + params.toString(), {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        this.suggestedMeeting = data.next || 1;
+                        // Auto-isi field kalau guru belum mengisi atau masih ikut suggestion sebelumnya.
+                        this.form.meeting_number = this.suggestedMeeting;
+                    } catch (e) {}
+                },
+
                 async generate() {
                     if (!this.form.title || !this.form.topic) { this.error = 'Isi judul & topik dulu.'; return; }
                     this.error = ''; this.loading = true;

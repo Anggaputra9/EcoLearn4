@@ -19,8 +19,15 @@
 
             <form method="POST" action="{{ $material ? route('teacher.materials.update', $material) : route('teacher.materials.store') }}" class="space-y-4">
                 @csrf @if($material) @method('PUT') @endif
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Pertemuan ke-</label>
+                        <input type="number" min="1" max="9999" name="meeting_number"
+                               class="input-glass"
+                               placeholder="Kosongkan untuk auto"
+                               value="{{ old('meeting_number', $material->meeting_number ?? '') }}">
+                    </div>
+                    <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Judul</label>
                         <input name="title" required class="input-glass" value="{{ old('title', $material->title ?? '') }}">
                     </div>
@@ -46,6 +53,7 @@
                         </select>
                     </div>
                 </div>
+
                 <div>
                     <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Konten Materi</label>
                     <textarea name="content" rows="18" required class="input-glass font-mono text-sm leading-relaxed">{{ old('content', $material->content ?? '') }}</textarea>

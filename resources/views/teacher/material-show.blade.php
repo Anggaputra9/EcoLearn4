@@ -14,11 +14,67 @@
                 <p class="text-sm text-slate-500">{{ $material->topic }}</p>
             </div>
 
+            @php
+                $hasSlides = collect($material->outputBundle())->contains(fn ($o) => $o['format'] === 'slides');
+                $hasInfo   = collect($material->outputBundle())->contains(fn ($o) => $o['format'] === 'infographic');
+            @endphp
             <div class="flex items-center gap-2 flex-wrap">
-                <a href="{{ route('teacher.materials.pdf', $material) }}" class="btn-secondary"><x-icon name="printer" class="w-4 h-4"/> Unduh PDF</a>
+                <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+                    <button type="button" class="btn-secondary" @click="open = !open">
+                        <x-icon name="printer" class="w-4 h-4"/> Unduh
+                        <x-icon name="arrow-down" class="w-3 h-3 ml-0.5"/>
+                    </button>
+                    <div x-show="open" x-cloak x-transition
+                         class="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-800 shadow-2xl ring-1 ring-slate-200/70 dark:ring-white/10 p-2 z-30">
+                        <a href="{{ route('teacher.materials.pdf', $material) }}"
+                           class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-emerald-50/70 dark:hover:bg-emerald-900/20">
+                            <x-icon name="doc-text" class="w-5 h-5 text-emerald-600 mt-0.5"/>
+                            <span class="text-sm">
+                                <span class="block font-semibold text-slate-800 dark:text-slate-100">PDF Materi Lengkap</span>
+                                <span class="block text-xs text-slate-500">Naskah biasa, A4 portrait.</span>
+                            </span>
+                        </a>
+                        <a href="{{ route('teacher.materials.slides.pptx', $material) }}"
+                           class="flex items-start gap-3 p-2.5 rounded-lg {{ $hasSlides ? 'hover:bg-emerald-50/70 dark:hover:bg-emerald-900/20' : 'opacity-60' }}"
+                           {{ $hasSlides ? '' : 'title=Generate format Slides dulu di halaman edit.' }}>
+                            <x-icon name="monitor" class="w-5 h-5 text-emerald-600 mt-0.5"/>
+                            <span class="text-sm">
+                                <span class="block font-semibold text-slate-800 dark:text-slate-100">PPTX (PowerPoint)</span>
+                                <span class="block text-xs text-slate-500">File .pptx asli + gambar otomatis.</span>
+                            </span>
+                        </a>
+                        <a href="{{ route('teacher.materials.slides.pdf', $material) }}"
+                           class="flex items-start gap-3 p-2.5 rounded-lg {{ $hasSlides ? 'hover:bg-emerald-50/70 dark:hover:bg-emerald-900/20' : 'opacity-60' }}">
+                            <x-icon name="photo" class="w-5 h-5 text-emerald-600 mt-0.5"/>
+                            <span class="text-sm">
+                                <span class="block font-semibold text-slate-800 dark:text-slate-100">PDF Slide Bergaya</span>
+                                <span class="block text-xs text-slate-500">1 halaman per slide, ada gambar.</span>
+                            </span>
+                        </a>
+                        @if ($hasInfo)
+                            <a href="{{ route('teacher.materials.infographic.pdf', $material) }}"
+                               class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-emerald-50/70 dark:hover:bg-emerald-900/20">
+                                <x-icon name="photo" class="w-5 h-5 text-emerald-600 mt-0.5"/>
+                                <span class="text-sm">
+                                    <span class="block font-semibold text-slate-800 dark:text-slate-100">PDF Infografis</span>
+                                    <span class="block text-xs text-slate-500">1 halaman visual berblok.</span>
+                                </span>
+                            </a>
+                        @else
+                            <div class="flex items-start gap-3 p-2.5 rounded-lg opacity-60" title="Generate format Infografis dulu di halaman edit.">
+                                <x-icon name="photo" class="w-5 h-5 text-slate-400 mt-0.5"/>
+                                <span class="text-sm">
+                                    <span class="block font-semibold text-slate-500">PDF Infografis</span>
+                                    <span class="block text-xs text-slate-400">Generate format "Infografis" dulu.</span>
+                                </span>
+                            </div>
+                        @endif
+                    </div>
+                </div>
                 <a href="{{ route('teacher.materials.edit', $material) }}" class="btn-secondary"><x-icon name="pencil" class="w-4 h-4"/> Edit</a>
                 <button class="btn-danger" @click="$dispatch('open-modal', 'mat-del')"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
             </div>
+
         </div>
     </x-slot>
 
@@ -52,19 +108,50 @@
             </div>
 
             {{-- TAB: MATERI --}}
+            @php $bundle = $material->outputBundle(); @endphp
             <div x-show="tab === 'materi'" x-cloak class="space-y-6">
-                <div class="glass p-6">
-                    <div class="flex items-center gap-2 mb-4">
+                <div class="glass p-6" x-data="{ fmt: @js($bundle[0]['format'] ?? 'standard') }">
+                    <div class="flex items-center gap-2 mb-4 flex-wrap">
                         <span class="badge badge-emerald">{{ $material->level }}</span>
                         @unless($material->is_published) <span class="badge badge-amber">Draft</span> @endunless
                         <span class="text-xs text-slate-500">Diperbarui {{ $material->updated_at->diffForHumans() }}</span>
+                        @if($material->custom_prompt)
+                            <span class="ml-auto text-xs text-slate-500 inline-flex items-center gap-1" title="{{ $material->custom_prompt }}">
+                                <x-icon name="sparkles" class="w-3.5 h-3.5"/> Punya arahan khusus
+                            </span>
+                        @endif
                     </div>
-                    <article class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $material->content }}</article>
+
+                    @if(count($bundle) > 1)
+                        <div class="flex gap-1 flex-wrap mb-4 border-b border-white/50 dark:border-white/10 pb-3">
+                            @foreach($bundle as $out)
+                                <button type="button"
+                                        @click="fmt = '{{ $out['format'] }}'"
+                                        :class="fmt === '{{ $out['format'] }}'
+                                            ? 'bg-emerald-500 text-white shadow'
+                                            : 'bg-white/40 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:bg-white/70'"
+                                        class="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition">
+                                    <x-icon :name="$out['icon']" class="w-3.5 h-3.5"/>
+                                    {{ $out['label'] }}
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @foreach($bundle as $out)
+                        <article x-show="fmt === '{{ $out['format'] }}'" x-cloak
+                                 class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $out['content'] }}</article>
+                    @endforeach
+
+                    @if(empty($bundle))
+                        <p class="text-sm text-slate-500"><em>Materi belum memiliki konten.</em></p>
+                    @endif
                 </div>
 
                 {{-- Forum diskusi tetap dekat materi --}}
                 @include('partials.discussions', ['material' => $material])
             </div>
+
 
             {{-- TAB: SOAL --}}
             <div x-show="tab === 'soal'" x-cloak class="space-y-6">

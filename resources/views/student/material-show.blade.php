@@ -47,20 +47,46 @@
             </div>
 
             {{-- TAB: MATERI --}}
+            @php $bundle = $material->outputBundle(); @endphp
             <div x-show="tab === 'materi'" x-cloak class="space-y-6">
-                <div class="glass p-6">
+                <div class="glass p-6" x-data="{ fmt: @js($bundle[0]['format'] ?? 'standard') }">
                     <div class="flex items-center gap-2 mb-3 flex-wrap">
                         <span class="badge badge-emerald">{{ $material->level }}</span>
                         @if($material->classroom)
                             <span class="badge badge-violet">{{ $material->classroom->name }}</span>
                         @endif
                     </div>
-                    <article class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $material->content }}</article>
+
+                    @if(count($bundle) > 1)
+                        <div class="flex gap-1 flex-wrap mb-4 border-b border-white/50 dark:border-white/10 pb-3">
+                            @foreach($bundle as $out)
+                                <button type="button"
+                                        @click="fmt = '{{ $out['format'] }}'"
+                                        :class="fmt === '{{ $out['format'] }}'
+                                            ? 'bg-emerald-500 text-white shadow'
+                                            : 'bg-white/40 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:bg-white/70'"
+                                        class="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition">
+                                    <x-icon :name="$out['icon']" class="w-3.5 h-3.5"/>
+                                    {{ $out['label'] }}
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @foreach($bundle as $out)
+                        <article x-show="fmt === '{{ $out['format'] }}'" x-cloak
+                                 class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $out['content'] }}</article>
+                    @endforeach
+
+                    @if(empty($bundle))
+                        <p class="text-sm text-slate-500"><em>Belum ada konten materi.</em></p>
+                    @endif
                 </div>
 
                 {{-- Forum diskusi tetap di tab materi --}}
                 @include('partials.discussions', ['material' => $material])
             </div>
+
 
             {{-- TAB: SOAL --}}
             @php

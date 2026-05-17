@@ -136,6 +136,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/pdf',         [TeacherController::class, 'downloadMaterialPdf'])->name('materials.pdf');
+        Route::get('/materials/{material}/slides.pptx', [TeacherController::class, 'downloadSlidesPptx'])->name('materials.slides.pptx');
+        Route::get('/materials/{material}/slides.pdf',  [TeacherController::class, 'downloadSlidesPdf'])->name('materials.slides.pdf');
+        Route::get('/materials/{material}/infographic.pdf', [TeacherController::class, 'downloadInfographicPdf'])->name('materials.infographic.pdf');
+
 
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');

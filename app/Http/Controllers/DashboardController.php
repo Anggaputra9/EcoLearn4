@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Changelog;
 use App\Models\Material;
 use App\Models\Submission;
 use App\Models\User;
+use App\Services\ChangelogService;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ChangelogService $changelog)
     {
         $user = $request->user();
 
@@ -21,7 +21,7 @@ class DashboardController extends Controller
                 'totalStudents'    => User::where('role_id', 3)->count(),
                 'totalMaterials'   => Material::count(),
                 'totalSubmissions' => Submission::count(),
-                'recentChangelog'  => Changelog::orderByDesc('released_at')->orderByDesc('id')->take(3)->get(),
+                'recentChangelog'  => $changelog->recent(3),
             ]);
         }
 

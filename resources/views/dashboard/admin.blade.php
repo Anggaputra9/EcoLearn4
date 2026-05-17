@@ -77,9 +77,11 @@
                 <div class="py-2 border-b border-white/40 dark:border-white/10 last:border-b-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="badge badge-emerald font-semibold">v{{ $c->version }}</span>
-                        <span class="text-xs text-slate-500">{{ $c->released_at->isoFormat('D MMM Y') }}</span>
+                        @if($c->released_at)
+                            <span class="text-xs text-slate-500">{{ $c->released_at->isoFormat('D MMM Y') }}</span>
+                        @endif
+                        <span class="badge {{ ['major'=>'badge-rose','minor'=>'badge-sky','patch'=>'badge-violet','hotfix'=>'badge-amber'][$c->kind] ?? 'badge-emerald' }}">{{ ucfirst($c->kind) }}</span>
                     </div>
-                    <p class="text-sm text-slate-700 dark:text-slate-200 mt-1">{{ $c->title }}</p>
                 </div>
             @empty
                 <p class="text-sm text-slate-500">Belum ada catatan rilis.</p>

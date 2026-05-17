@@ -111,10 +111,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/mail-keys/{mailKey}/reset-quota',[MailKeyController::class, 'resetQuota']);
 
 
-        Route::get('/changelogs',                  [ChangelogController::class, 'index'])->name('admin.changelogs');
-        Route::post('/changelogs',                 [ChangelogController::class, 'store']);
-        Route::put('/changelogs/{changelog}',      [ChangelogController::class, 'update']);
-        Route::delete('/changelogs/{changelog}',   [ChangelogController::class, 'destroy']);
+        // Changelog dibaca langsung dari CHANGELOG.md (read-only).
+        Route::get('/changelogs', [ChangelogController::class, 'index'])->name('admin.changelogs');
     });
 
     /* ===== Guru ===== */

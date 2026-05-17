@@ -4,9 +4,18 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Changelog kini dibaca langsung dari CHANGELOG.md (read-only).
+ * Tabel changelogs sudah tidak diperlukan.
+ */
 return new class extends Migration
 {
     public function up(): void
+    {
+        Schema::dropIfExists('changelogs');
+    }
+
+    public function down(): void
     {
         Schema::create('changelogs', function (Blueprint $table) {
             $table->id();
@@ -17,10 +26,5 @@ return new class extends Migration
             $table->enum('kind', ['major', 'minor', 'patch', 'hotfix'])->default('minor');
             $table->timestamps();
         });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('changelogs');
     }
 };

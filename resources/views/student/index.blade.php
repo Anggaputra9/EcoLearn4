@@ -24,9 +24,15 @@
         <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             @foreach($materials as $m)
                 <a href="{{ route('student.materials.show', $m) }}" class="glass p-5 hover:scale-[1.02] transition flex flex-col">
-                    <span class="badge badge-emerald self-start">{{ $m->level }}</span>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        @if($m->meeting_number)
+                            <span class="badge badge-amber">Pertemuan {{ $m->meeting_number }}</span>
+                        @endif
+                        <span class="badge badge-emerald">{{ $m->level }}</span>
+                    </div>
                     <h3 class="mt-3 font-semibold text-slate-800">{{ $m->title }}</h3>
                     <p class="text-sm text-slate-500 mt-1">{{ $m->topic }}</p>
+
                     <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
                         <span>Oleh {{ $m->teacher->name }}</span>
                         <span>{{ $m->questions->count() }} soal</span>

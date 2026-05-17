@@ -17,6 +17,62 @@ use Illuminate\View\View;
 
 class ExamRunController extends Controller
 {
+    /**
+     * Daftar ujian yang tersedia/sudah pernah dikerjakan oleh siswa
+     * (lintas materi & kelas) — dipakai oleh menu "Ujian" di sidebar siswa.
+     */
+    public function index(Request $request): View
+    {
+        $user = Auth::id();
+        $q = trim((string) $request->get('q', ''));
+        $tab = $request->get('tab', 'live'); // live|upcoming|past|all
+        if (! in_array($tab, ['live', 'upcoming', 'past', 'all'], true)) $tab = 'live';
+
+        $joinedClassroomIds = Auth::user()->classroomsJoined()->pluck('classrooms.id');
+
+        $query = Exam::with(['material:id,title', 'classroom:id,name'])
+            ->where(function ($w) use ($joinedClassroomIds) {
+                // Ujian tanpa kelas (publik) atau ujian di kelas yang diikuti
+                $w->whereNull('classroom_id')->orWhereIn('classroom_id', $joinedClassroomIds);
+            })
+            ->whereIn('status', ['published', 'closed'])
+            ->when($q, fn ($qq) => $qq->where(function ($w) use ($q) {
+                $w->where('title', 'like', "%$q%")
+                  ->orWhereHas('material', fn ($m) => $m->where('title', 'like', "%$q%"));
+            }));
+
+        $now = now();
+        if ($tab === 'live') {
+            $query->where('status', 'published')
+                  ->where(function ($w) use ($now) {
+                      $w->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
+                  })
+                  ->where(function ($w) use ($now) {
+                      $w->whereNull('ends_at')->orWhere('ends_at', '>=', $now);
+                  });
+        } elseif ($tab === 'upcoming') {
+            $query->where('status', 'published')
+                  ->whereNotNull('starts_at')
+                  ->where('starts_at', '>', $now);
+        } elseif ($tab === 'past') {
+            $query->where(function ($w) use ($now) {
+                $w->where('status', 'closed')
+                  ->orWhere(function ($x) use ($now) {
+                      $x->whereNotNull('ends_at')->where('ends_at', '<', $now);
+                  });
+            });
+        }
+
+        $exams = $query->latest('starts_at')->latest('id')->paginate(12)->withQueryString();
+
+        // Ambil attempt user untuk seluruh exam yg muncul (status & skor).
+        $attempts = ExamAttempt::where('user_id', $user)
+            ->whereIn('exam_id', $exams->pluck('id'))
+            ->get()->keyBy('exam_id');
+
+        return view('student.exams.index', compact('exams', 'attempts', 'q', 'tab'));
+    }
+
     /** Layar lobby ujian (sebelum mulai). */
     public function lobby(Exam $exam): View|RedirectResponse
     {
@@ -274,9 +330,9 @@ class ExamRunController extends Controller
             $sub->update([
                 'score'           => $isCorrect ? (int) $q->max_score : 0,
                 'status'          => 'graded',
-                'feedback'        => $isCorrect
-                    ? 'Jawaban benar.'
-                    : 'Jawaban kurang tepat. Kunci: '.($q->correct_option ?: '—'),
+                // Tidak menyebut kunci jawaban — sengaja minim agar siswa tidak
+                // bisa menebak dari feedback otomatis.
+                'feedback'        => $isCorrect ? 'Jawaban benar.' : 'Jawaban kurang tepat.',
                 'graded_at'       => now(),
                 'manually_graded' => false,
             ]);

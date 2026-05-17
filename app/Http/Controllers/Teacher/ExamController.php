@@ -16,6 +16,41 @@ use Illuminate\View\View;
 
 class ExamController extends Controller
 {
+    /**
+     * Daftar SEMUA ujian milik guru (lintas materi & kelas) untuk menu navigasi
+     * "Ujian" di sidebar guru. Mendukung filter status & pencarian sederhana.
+     */
+    public function index(Request $request): View
+    {
+        $q       = trim((string) $request->get('q', ''));
+        $status  = $request->get('status'); // draft|published|closed
+        $matId   = $request->get('material_id');
+
+        $exams = Exam::with(['material:id,title', 'classroom:id,name'])
+            ->withCount('attempts')
+            ->where('teacher_id', Auth::id())
+            ->when($q, fn ($qq) => $qq->where(function ($w) use ($q) {
+                $w->where('title', 'like', "%$q%")
+                  ->orWhereHas('material', fn ($m) => $m->where('title', 'like', "%$q%"));
+            }))
+            ->when($status, fn ($qq) => $qq->where('status', $status))
+            ->when($matId, fn ($qq) => $qq->where('material_id', $matId))
+            ->latest()
+            ->paginate(12)
+            ->withQueryString();
+
+        $materials = Material::where('teacher_id', Auth::id())->orderBy('title')->get(['id', 'title']);
+
+        $stats = [
+            'total'     => Exam::where('teacher_id', Auth::id())->count(),
+            'published' => Exam::where('teacher_id', Auth::id())->where('status', 'published')->count(),
+            'draft'     => Exam::where('teacher_id', Auth::id())->where('status', 'draft')->count(),
+            'closed'    => Exam::where('teacher_id', Auth::id())->where('status', 'closed')->count(),
+        ];
+
+        return view('teacher.exams.index', compact('exams', 'materials', 'q', 'status', 'matId', 'stats'));
+    }
+
     public function indexForMaterial(Material $material): View
     {
         $this->authorizeMaterial($material);

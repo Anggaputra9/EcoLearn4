@@ -44,7 +44,8 @@
                         @if($sub->status === 'graded') <span class="badge badge-emerald">Selesai</span> @endif
                         @if($sub->graded_at) <span class="text-xs text-slate-400">· {{ $sub->graded_at->diffForHumans() }}</span> @endif
                     </div>
-                    <form method="POST" action="{{ route('teacher.submissions.aiGrade', $sub) }}">
+                    <form method="POST" action="{{ route('teacher.submissions.aiGrade', $sub) }}"
+                          data-ai-loading="AI sedang mengoreksi jawaban siswa…">
                         @csrf
                         <button class="btn-secondary text-sm"><x-icon name="sparkles" class="w-4 h-4"/> Jalankan AI</button>
                     </form>

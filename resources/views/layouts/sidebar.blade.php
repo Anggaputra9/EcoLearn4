@@ -21,12 +21,14 @@
         $items = [
             ['Beranda',          '/dashboard',                 'home'],
             ['Materi Saya',      '/teacher',                   'book'],
+            ['Ujian Saya',       '/teacher/exams',             'pencil'],
             ['Kelas Saya',       '/teacher/classrooms',        'school'],
         ];
     } elseif ($u->isStudent()) {
         $items = [
             ['Beranda',          '/dashboard',          'home'],
             ['Daftar Materi',    '/student',            'book'],
+            ['Ujian',            '/student/exams',      'pencil'],
             ['Kelas Saya',       '/student/classrooms', 'school'],
         ];
     }

@@ -12,29 +12,25 @@ use Illuminate\Validation\ValidationException;
 
 class LoginRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            'email'    => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
         ];
     }
 
     /**
-     * Attempt to authenticate the request's credentials.
+     * Cara lama: validasi kredensial + langsung login.
+     * Tetap dipertahankan agar ada backward-compat.
      *
      * @throws ValidationException
      */
@@ -54,8 +50,29 @@ class LoginRequest extends FormRequest
     }
 
     /**
-     * Ensure the login request is not rate limited.
+     * Cara baru: hanya validasi kredensial (tanpa login). Dipakai oleh flow
+     * OTP-2FA agar login sebenarnya ditunda sampai OTP terverifikasi.
      *
+     * @throws ValidationException
+     */
+    public function authenticateCredentials(): void
+    {
+        $this->ensureIsNotRateLimited();
+
+        $valid = Auth::validate($this->only('email', 'password'));
+
+        if (! $valid) {
+            RateLimiter::hit($this->throttleKey());
+            throw ValidationException::withMessages([
+                'email' => trans('auth.failed'),
+            ]);
+        }
+
+        // Sukses → reset rate-limit; login akan dilakukan controller setelah OTP (atau langsung).
+        RateLimiter::clear($this->throttleKey());
+    }
+
+    /**
      * @throws ValidationException
      */
     public function ensureIsNotRateLimited(): void
@@ -76,9 +93,6 @@ class LoginRequest extends FormRequest
         ]);
     }
 
-    /**
-     * Get the rate limiting throttle key for the request.
-     */
     public function throttleKey(): string
     {
         return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());

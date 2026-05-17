@@ -25,6 +25,9 @@
         'shield'      => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M12 21a9 9 0 01-9-9V5l9-2 9 2v7a9 9 0 01-9 9z"/>',
         'history'     => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h7M3 4h11M3 16h11m-7 4l4-4-4-4m6 0a9 9 0 100 8"/>',
         'arrow-right' => '<path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>',
+        'arrow-left'  => '<path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>',
+        'refresh'     => '<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M5 19a9 9 0 0014.5 2.5M19 5A9 9 0 004.5 2.5"/>',
+
         'sun'         => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10l1.4-1.4M12 8a4 4 0 100 8 4 4 0 000-8z"/>',
         'moon'        => '<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
         'monitor'     => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 17h6M12 17v4m-7-4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2z"/>',

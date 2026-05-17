@@ -101,6 +101,66 @@
 
             <hr class="my-6 border-white/40">
 
+            <h3 class="font-semibold text-slate-800 mb-1">Verifikasi 2 Langkah (OTP Email)</h3>
+            <p class="text-xs text-slate-500 mb-4">
+                Saat aktif, setiap login akan butuh kode 6 digit yang dikirim ke
+                <span class="font-medium text-slate-700">{{ $user->email }}</span>.
+                Bisa dimatikan kapan saja.
+            </p>
+
+            <div class="rounded-xl border border-white/60 dark:border-white/10 bg-white/40 dark:bg-slate-800/30 p-4 mb-6">
+                <div class="flex items-center justify-between gap-3 mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="badge {{ $user->otp_login_enabled ? 'badge-emerald' : 'badge-amber' }}">
+                            {{ $user->otp_login_enabled ? 'Aktif' : 'Mati' }}
+                        </span>
+                        <span class="text-sm text-slate-600 dark:text-slate-300">
+                            Status saat ini
+                        </span>
+                    </div>
+                    <button type="button"
+                            class="{{ $user->otp_login_enabled ? 'btn-secondary' : 'btn-primary' }} text-sm py-1.5 px-3"
+                            @click="$dispatch('open-modal', 'otp-toggle')">
+                        <x-icon name="shield" class="w-4 h-4"/>
+                        {{ $user->otp_login_enabled ? 'Matikan' : 'Aktifkan' }}
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500">
+                    Kode dikirim via penyedia email yang dikonfigurasi admin. Pastikan email Anda aktif.
+                </p>
+            </div>
+
+            <x-modal-glass name="otp-toggle"
+                title="{{ $user->otp_login_enabled ? 'Matikan Verifikasi 2 Langkah' : 'Aktifkan Verifikasi 2 Langkah' }}"
+                max-width="md">
+                <form method="POST" action="{{ route('profile.otpLogin') }}" class="space-y-3">
+                    @csrf
+                    <input type="hidden" name="enabled" value="{{ $user->otp_login_enabled ? '0' : '1' }}">
+                    <p class="text-sm text-slate-600 dark:text-slate-300">
+                        @if($user->otp_login_enabled)
+                            Setelah dimatikan, login hanya butuh email & kata sandi.
+                        @else
+                            Setelah aktif, setiap login akan butuh kode OTP yang dikirim ke email Anda.
+                        @endif
+                        Konfirmasi dengan kata sandi Anda.
+                    </p>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Kata Sandi Saat Ini</label>
+                        <input type="password" name="current_password" required class="input-glass">
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" class="btn-secondary"
+                                @click="$dispatch('close-modal', 'otp-toggle')">Batal</button>
+                        <button class="{{ $user->otp_login_enabled ? 'btn-danger' : 'btn-primary' }}">
+                            <x-icon name="shield" class="w-4 h-4"/>
+                            {{ $user->otp_login_enabled ? 'Ya, Matikan' : 'Ya, Aktifkan' }}
+                        </button>
+                    </div>
+                </form>
+            </x-modal-glass>
+
+            <hr class="my-6 border-white/40">
+
             <h3 class="font-semibold text-rose-700 mb-1">Zona Berbahaya</h3>
             <p class="text-xs text-slate-500 mb-3">Menghapus akun bersifat permanen. Tindakan tidak dapat dibatalkan.</p>
             <button type="button" class="btn-danger" @click="$dispatch('open-modal', 'profile-delete')">

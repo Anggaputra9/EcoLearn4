@@ -6,8 +6,11 @@ use App\Models\Classroom;
 use App\Models\Material;
 use App\Models\Question;
 use App\Services\AIService;
+use App\Services\MaterialExportService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
+
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -29,67 +32,314 @@ class TeacherController extends Controller
             }))
             ->when($level, fn ($qq) => $qq->where('level', $level))
             ->when($classroomId, fn ($qq) => $qq->where('classroom_id', $classroomId))
+            ->orderByRaw('meeting_number IS NULL, meeting_number ASC')
             ->latest()
             ->paginate(9)
             ->withQueryString();
 
         $classrooms = Classroom::where('teacher_id', Auth::id())->orderBy('name')->get();
 
-        return view('teacher.index', compact('materials', 'q', 'level', 'classrooms', 'classroomId'));
+        // Untuk auto-iterate nomor pertemuan di modal "Buat Materi".
+        // Default: skala "tanpa kelas" milik guru ini.
+        $nextMeeting = Material::nextMeetingNumber(Auth::id(), null);
+
+        // Hitung sisa materi yang ada di histori (sudah dihapus tapi masih bisa di-restore)
+        $trashedCount = Material::onlyTrashed()->where('teacher_id', Auth::id())->count();
+
+        return view('teacher.index', compact(
+            'materials', 'q', 'level', 'classrooms', 'classroomId', 'nextMeeting', 'trashedCount'
+        ));
     }
 
     /**
-     * Endpoint AJAX dipakai modal "Buat Materi" → mengembalikan JSON preview
-     * sehingga guru bisa meninjau dan menyimpan tanpa pindah halaman.
+     * AJAX: kembalikan nomor pertemuan berikutnya berdasarkan classroom_id.
+     * Dipakai modal "Buat Materi" untuk auto-iterate saat guru ganti kelas.
+     */
+    public function nextMeetingNumber(Request $request): JsonResponse
+    {
+        $classroomId = $request->input('classroom_id') ?: null;
+        if ($classroomId) {
+            $own = Classroom::where('id', $classroomId)->where('teacher_id', Auth::id())->exists();
+            if (! $own) abort(403);
+        }
+        return response()->json([
+            'next' => Material::nextMeetingNumber(Auth::id(), $classroomId ? (int) $classroomId : null),
+        ]);
+    }
+
+    /**
+     * Halaman "Histori Materi" — termasuk yang sudah dihapus.
+     * Mirip log history: guru bisa lihat bekas materi lama, restore, atau hapus permanen.
+     */
+    public function materialHistory(Request $request): View
+    {
+        $q = trim((string) $request->get('q', ''));
+        $classroomId = $request->get('classroom_id');
+        $scope = $request->get('scope', 'all'); // all | active | trashed
+
+        $base = Material::withTrashed()
+            ->with(['questions', 'classroom'])
+            ->where('teacher_id', Auth::id());
+
+        if ($scope === 'active') $base->whereNull('deleted_at');
+        if ($scope === 'trashed') $base->whereNotNull('deleted_at');
+
+        $materials = $base
+            ->when($q, fn ($qq) => $qq->where(function ($w) use ($q) {
+                $w->where('title', 'like', "%$q%")->orWhere('topic', 'like', "%$q%");
+            }))
+            ->when($classroomId, fn ($qq) => $qq->where('classroom_id', $classroomId))
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->withQueryString();
+
+        $classrooms = Classroom::where('teacher_id', Auth::id())->orderBy('name')->get();
+
+        return view('teacher.material-history', compact('materials', 'q', 'classrooms', 'classroomId', 'scope'));
+    }
+
+    public function restoreMaterial(int $id): RedirectResponse
+    {
+        $material = Material::onlyTrashed()->where('teacher_id', Auth::id())->findOrFail($id);
+        $material->restore();
+        return back()->with('success', 'Materi "'.$material->title.'" berhasil dipulihkan.');
+    }
+
+    public function forceDestroyMaterial(int $id): RedirectResponse
+    {
+        $material = Material::withTrashed()->where('teacher_id', Auth::id())->findOrFail($id);
+        $title = $material->title;
+        $material->forceDelete();
+        return back()->with('success', 'Materi "'.$title.'" dihapus permanen.');
+    }
+
+
+    /**
+     * Endpoint AJAX modal "Buat Materi".
+     *
+     * Mendukung multi-format (mirip NotebookLM): guru bisa memilih
+     * beberapa format sekaligus (materi lengkap, ringkasan, slide,
+     * infografis, mind map, dst). Selain itu guru bisa menambahkan
+     * `custom_prompt` agar arah penyusunan materi lebih spesifik
+     * daripada sekadar "topik".
+     *
+     * Response:
+     *   { ok: true, outputs: [{format, label, content}, ...] }
      */
     public function generateMaterialAjax(Request $request, AIService $ai): JsonResponse
     {
         $data = $request->validate([
-            'title' => 'required|string|max:255',
-            'topic' => 'required|string|max:255',
-            'level' => 'required|in:SD,SMP,SMA,Umum',
+            'title'         => 'required|string|max:255',
+            'topic'         => 'required|string|max:255',
+            'level'         => 'required|in:SD,SMP,SMA,Umum',
+            'formats'       => 'required|array|min:1',
+            'formats.*'     => 'required|string|in:'.implode(',', array_keys(Material::formats())),
+            'custom_prompt' => 'nullable|string|max:2000',
         ]);
 
-        $system = 'Anda adalah penulis materi pembelajaran berbahasa Indonesia '
-                .'dengan spesialisasi ekoteologi (perpaduan teologi & ekologi). '
-                .'Hasilkan materi yang mendidik, akurat, ramah pelajar, dan inklusif.';
+        $formats = array_values(array_unique($data['formats']));
+        $custom = trim((string) ($data['custom_prompt'] ?? ''));
 
-        $prompt = "Buatkan materi pembelajaran lengkap berbahasa Indonesia tentang topik ekoteologi: \"{$data['topic']}\".\n"
-                ."Sasaran pembaca: tingkat {$data['level']}.\n"
-                ."Struktur: 1) Pengantar; 2) Konsep kunci (3+); 3) Refleksi nilai & etika; 4) Studi kasus Indonesia; 5) Pertanyaan reflektif.\n"
-                ."Tanpa simbol markdown (**, *, #), tanpa emoji.";
+        $outputs = [];
+        $errors  = [];
 
-        try {
-            $content = preg_replace('/(\*\*|\*|#+)/', '', $ai->generateText($prompt, $system));
-            return response()->json(['ok' => true, 'content' => trim($content)]);
-        } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        foreach ($formats as $fmt) {
+            try {
+                $text = $this->generateForFormat($ai, $fmt, $data['title'], $data['topic'], $data['level'], $custom);
+                $outputs[] = [
+                    'format'  => $fmt,
+                    'label'   => Material::formatLabel($fmt),
+                    'content' => $text,
+                ];
+            } catch (\Throwable $e) {
+                $errors[] = Material::formatLabel($fmt).': '.$e->getMessage();
+            }
         }
+
+        if (empty($outputs)) {
+            return response()->json([
+                'ok' => false,
+                'message' => $errors ? implode(' | ', $errors) : 'AI tidak mengembalikan hasil.',
+            ], 422);
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'outputs' => $outputs,
+            'partial' => $errors,
+        ]);
     }
+
+    /**
+     * Bangun prompt sesuai format & panggil AI. Dipisah agar bisa dipakai
+     * ulang (mis. saat regenerate satu format dari halaman edit).
+     */
+    protected function generateForFormat(
+        AIService $ai,
+        string $format,
+        string $title,
+        string $topic,
+        string $level,
+        string $customPrompt = ''
+    ): string {
+        $system = 'Anda adalah penyusun materi pembelajaran berbahasa Indonesia dengan spesialisasi '
+                .'ekoteologi (perpaduan teologi & ekologi). Output harus mendidik, akurat, ramah '
+                .'pelajar, dan inklusif. Jangan pakai simbol markdown (**, *, #) atau emoji.';
+
+        $base = "Topik utama: \"{$topic}\".\nJudul materi: \"{$title}\".\nTingkat sasaran: {$level}.";
+        if ($customPrompt !== '') {
+            $base .= "\nArahan tambahan dari guru (WAJIB diikuti): {$customPrompt}";
+        }
+
+        $prompt = match ($format) {
+            'summary' => $base."\n\nTugas: tulis RINGKASAN materi pembelajaran. "
+                ."Maksimal 250 kata, padat & mudah dipahami. Susun dalam paragraf pengantar 1-2 kalimat, "
+                ."lalu daftar 5-7 poin inti dengan format 'Nomor. Judul Poin: penjelasan 1 kalimat'. "
+                ."Tutup dengan 1 kalimat refleksi nilai ekoteologi.",
+
+            'slides' => $base."\n\nTugas: susun OUTLINE SLIDE PRESENTASI siap pakai (8-12 slide). "
+                ."Format setiap slide:\n"
+                ."Slide N: <Judul Singkat>\n- Poin bullet 1\n- Poin bullet 2\n- Poin bullet 3\n"
+                ."Catatan Pengajar: <1-2 kalimat untuk dibawakan lisan>\n\n"
+                ."Slide pertama = sampul, slide terakhir = penutup/refleksi. Jangan gunakan tanda **/##.",
+
+            'infographic' => $base."\n\nTugas: buat NASKAH INFOGRAFIS berbasis teks (tanpa gambar) "
+                ."yang mudah dialihkan ke desain visual. Struktur:\n"
+                ."Judul Utama:\nSubjudul:\n\n"
+                ."Lalu 4-6 BLOK berbentuk:\n"
+                ."Blok N — <Tema Blok>\nFakta kunci: ...\nData/Statistik (jika relevan): ...\n"
+                ."Kutipan singkat (1 kalimat): ...\n\n"
+                ."Akhiri dengan 'Ajakan Aksi:' satu kalimat. Bahasa singkat & visual.",
+
+            'mindmap' => $base."\n\nTugas: buat MIND MAP berbentuk teks indentasi (tree). "
+                ."Aturan format:\n"
+                ."- Topik utama di baris pertama tanpa indentasi.\n"
+                ."- Sub-cabang utama gunakan indentasi 2 spasi diawali '- '.\n"
+                ."- Sub-sub cabang indentasi 4 spasi diawali '- '.\n"
+                ."- Maksimal 3 level kedalaman, 4-6 cabang utama, 2-4 cabang anak per cabang.\n"
+                ."Pastikan struktur logis (Definisi → Prinsip → Contoh → Aksi).",
+
+            'flashcards' => $base."\n\nTugas: buat 10 KARTU FLASHCARD untuk hafalan istilah/konsep. "
+                ."Format setiap kartu (pisahkan dengan baris kosong):\n"
+                ."Kartu N\nDepan: <pertanyaan/istilah singkat>\nBelakang: <jawaban/penjelasan 1-2 kalimat>\n\n"
+                ."Variasikan tingkat kesulitan dari mudah ke menengah.",
+
+            'lesson_plan' => $base."\n\nTugas: susun RENCANA PEMBELAJARAN (RPP ringkas) untuk 1 sesi 2x45 menit. "
+                ."Struktur wajib:\n"
+                ."A. Tujuan Pembelajaran (3 poin)\n"
+                ."B. Materi Pokok (ringkas)\n"
+                ."C. Kegiatan Pembelajaran:\n"
+                ."   1) Pendahuluan (10 menit) - apersepsi & motivasi\n"
+                ."   2) Inti (60 menit) - eksplorasi, elaborasi, konfirmasi\n"
+                ."   3) Penutup (20 menit) - kesimpulan & refleksi\n"
+                ."D. Media & Sumber Belajar\n"
+                ."E. Asesmen / Penilaian (afektif, kognitif, psikomotor)",
+
+            default => $base."\n\nTugas: tulis MATERI PEMBELAJARAN LENGKAP dengan struktur:\n"
+                ."1) Pengantar (mengapa topik ini penting bagi siswa);\n"
+                ."2) Konsep Kunci (minimal 3 sub-konsep, jelaskan tiap konsep dalam 1-2 paragraf);\n"
+                ."3) Refleksi Nilai & Etika ekoteologi;\n"
+                ."4) Studi Kasus Indonesia (peristiwa/konteks lokal yang relevan);\n"
+                ."5) Pertanyaan Reflektif (4-5 pertanyaan terbuka).\n"
+                ."Gunakan bahasa Indonesia baku yang ramah pelajar.",
+        };
+
+        $raw = $ai->generateText($prompt, $system);
+        // Bersihkan simbol markdown agar konsisten dengan tampilan whitespace-pre.
+        $clean = preg_replace('/(\*\*|__|\*|#+)/', '', (string) $raw);
+        return trim($clean);
+    }
+
 
     public function storeMaterial(Request $request): RedirectResponse
     {
+        $allowedFormats = array_keys(Material::formats());
+
         $data = $request->validate([
-            'title'        => 'required|string|max:255',
-            'topic'        => 'required|string|max:255',
-            'level'        => 'required|in:SD,SMP,SMA,Umum',
-            'content'      => 'required|string',
-            'classroom_id' => 'nullable|integer|exists:classrooms,id',
-            'is_published' => 'sometimes|boolean',
+            'title'           => 'required|string|max:255',
+            'topic'           => 'required|string|max:255',
+            'level'           => 'required|in:SD,SMP,SMA,Umum',
+            'content'         => 'required|string',
+            'format'          => 'nullable|string|in:'.implode(',', $allowedFormats),
+            'custom_prompt'   => 'nullable|string|max:2000',
+            'outputs'         => 'nullable|array',
+            'outputs.*.format'  => 'required_with:outputs|string|in:'.implode(',', $allowedFormats),
+            'outputs.*.label'   => 'nullable|string|max:60',
+            'outputs.*.content' => 'required_with:outputs|string',
+            'classroom_id'    => 'nullable|integer|exists:classrooms,id',
+            'meeting_number'  => 'nullable|integer|min:1|max:9999',
+            'is_published'    => 'sometimes|boolean',
         ]);
 
-        if (! empty($data['classroom_id'])) {
-            $own = Classroom::where('id', $data['classroom_id'])->where('teacher_id', Auth::id())->exists();
+        $classroomId = ! empty($data['classroom_id']) ? (int) $data['classroom_id'] : null;
+        if ($classroomId) {
+            $own = Classroom::where('id', $classroomId)->where('teacher_id', Auth::id())->exists();
             if (! $own) abort(403, 'Kelas bukan milik Anda.');
         }
 
-        $material = Material::create($data + [
-            'teacher_id'   => Auth::id(),
-            'is_published' => (bool) $request->boolean('is_published', true),
+        // Auto-iterate kalau guru tidak isi nomor pertemuan.
+        $meeting = $data['meeting_number'] ?? null;
+        if (! $meeting) {
+            $meeting = Material::nextMeetingNumber(Auth::id(), $classroomId);
+        }
+
+        $primaryFormat = $data['format'] ?? 'standard';
+        $outputs = $this->sanitizeOutputs($data['outputs'] ?? null, $primaryFormat, (string) $data['content']);
+
+        $material = Material::create([
+            'teacher_id'     => Auth::id(),
+            'classroom_id'   => $classroomId,
+            'title'          => $data['title'],
+            'topic'          => $data['topic'],
+            'level'          => $data['level'],
+            'format'         => $primaryFormat,
+            'content'        => $data['content'],
+            'custom_prompt'  => $data['custom_prompt'] ?? null,
+            'outputs'        => $outputs,
+            'meeting_number' => $meeting,
+            'is_published'   => (bool) $request->boolean('is_published', true),
         ]);
 
-        return redirect()->route('teacher.materials.show', $material)->with('success', 'Materi berhasil disimpan.');
+        return redirect()->route('teacher.materials.show', $material)
+            ->with('success', 'Materi pertemuan ke-'.$meeting.' berhasil disimpan.');
     }
+
+    /**
+     * Normalisasi & filter outputs JSON dari form. Memastikan format utama
+     * tersinkron dengan kolom `content` agar tidak ada duplikasi/ambigu.
+     */
+    protected function sanitizeOutputs(?array $raw, string $primaryFormat, string $primaryContent): array
+    {
+        $allowed = array_keys(Material::formats());
+        $clean = [];
+        $seen = [];
+
+        // Sertakan format utama lebih dulu.
+        if (trim($primaryContent) !== '') {
+            $clean[] = [
+                'format'  => $primaryFormat,
+                'label'   => Material::formatLabel($primaryFormat),
+                'content' => $primaryContent,
+            ];
+            $seen[$primaryFormat] = true;
+        }
+
+        foreach ((array) $raw as $row) {
+            $fmt = (string) ($row['format'] ?? '');
+            $txt = trim((string) ($row['content'] ?? ''));
+            if (! in_array($fmt, $allowed, true) || $txt === '' || isset($seen[$fmt])) continue;
+            $clean[] = [
+                'format'  => $fmt,
+                'label'   => trim((string) ($row['label'] ?? Material::formatLabel($fmt))) ?: Material::formatLabel($fmt),
+                'content' => $txt,
+            ];
+            $seen[$fmt] = true;
+        }
+
+        return $clean;
+    }
+
+
 
     public function showMaterial(Material $material): View
     {
@@ -112,13 +362,22 @@ class TeacherController extends Controller
     public function updateMaterial(Request $request, Material $material): RedirectResponse
     {
         $this->authorizeOwnership($material);
+        $allowedFormats = array_keys(Material::formats());
+
         $data = $request->validate([
-            'title'        => 'required|string|max:255',
-            'topic'        => 'required|string|max:255',
-            'level'        => 'required|in:SD,SMP,SMA,Umum',
-            'content'      => 'required|string',
-            'classroom_id' => 'nullable|integer|exists:classrooms,id',
-            'is_published' => 'sometimes|boolean',
+            'title'             => 'required|string|max:255',
+            'topic'             => 'required|string|max:255',
+            'level'             => 'required|in:SD,SMP,SMA,Umum',
+            'content'           => 'required|string',
+            'format'            => 'nullable|string|in:'.implode(',', $allowedFormats),
+            'custom_prompt'     => 'nullable|string|max:2000',
+            'outputs'           => 'nullable|array',
+            'outputs.*.format'  => 'required_with:outputs|string|in:'.implode(',', $allowedFormats),
+            'outputs.*.label'   => 'nullable|string|max:60',
+            'outputs.*.content' => 'required_with:outputs|string',
+            'classroom_id'      => 'nullable|integer|exists:classrooms,id',
+            'meeting_number'    => 'nullable|integer|min:1|max:9999',
+            'is_published'      => 'sometimes|boolean',
         ]);
         if (! empty($data['classroom_id'])) {
             $own = Classroom::where('id', $data['classroom_id'])->where('teacher_id', Auth::id())->exists();
@@ -126,9 +385,53 @@ class TeacherController extends Controller
         }
         $data['is_published'] = (bool) $request->boolean('is_published', true);
 
+        // Pastikan meeting_number selalu masuk (boleh null = "tanpa nomor pertemuan").
+        $data['meeting_number'] = $data['meeting_number'] ?? null;
+
+        // Format & outputs hanya diperbarui jika dikirim oleh form (form sidebar
+        // sederhana mungkin tidak mengirim keduanya — biarkan apa adanya).
+        if ($request->filled('format')) {
+            $primaryFormat = $data['format'];
+        } else {
+            $primaryFormat = $material->format ?: 'standard';
+        }
+        $data['format'] = $primaryFormat;
+
+        if ($request->has('outputs')) {
+            $data['outputs'] = $this->sanitizeOutputs($data['outputs'] ?? null, $primaryFormat, (string) $data['content']);
+        } else {
+            // Sinkronkan ulang konten utama ke entri outputs format primer agar tetap konsisten.
+            $existing = (array) ($material->outputs ?? []);
+            $synced = [];
+            $seen = [];
+            $synced[] = [
+                'format'  => $primaryFormat,
+                'label'   => Material::formatLabel($primaryFormat),
+                'content' => (string) $data['content'],
+            ];
+            $seen[$primaryFormat] = true;
+            foreach ($existing as $row) {
+                $fmt = (string) ($row['format'] ?? '');
+                if ($fmt === '' || isset($seen[$fmt])) continue;
+                $synced[] = [
+                    'format'  => $fmt,
+                    'label'   => (string) ($row['label'] ?? Material::formatLabel($fmt)),
+                    'content' => (string) ($row['content'] ?? ''),
+                ];
+                $seen[$fmt] = true;
+            }
+            $data['outputs'] = $synced;
+        }
+
+        if (! $request->filled('custom_prompt') && ! $request->has('custom_prompt')) {
+            unset($data['custom_prompt']); // jangan paksa null kalau form tidak kirim
+        }
+
         $material->update($data);
         return redirect()->route('teacher.materials.show', $material)->with('success', 'Materi berhasil diperbarui.');
     }
+
+
 
     public function destroyMaterial(Material $material): RedirectResponse
     {
@@ -151,6 +454,114 @@ class TeacherController extends Controller
         $filename = 'Materi-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
         return $pdf->download($filename);
     }
+
+    /**
+     * Unduh PPTX asli (PowerPoint). Slide diparse dari output format
+     * 'slides' dan dilengkapi gambar otomatis dari LoremFlickr/Picsum.
+     */
+    public function downloadSlidesPptx(Material $material, MaterialExportService $exporter): BinaryFileResponse
+    {
+        $this->authorizeOwnership($material);
+        $material->load(['teacher', 'classroom']);
+
+        try {
+            $path = $exporter->buildPptx($material);
+        } catch (\Throwable $e) {
+            abort(500, 'Gagal membuat PPTX: '.$e->getMessage());
+        }
+
+        $filename = 'Slide-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pptx';
+        return response()->download($path, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Unduh PDF bergaya slide (1 halaman per slide) — alternatif PPTX
+     * untuk yang tidak punya PowerPoint. Sertakan gambar di tiap slide.
+     */
+    public function downloadSlidesPdf(Material $material, MaterialExportService $exporter): Response
+    {
+        $this->authorizeOwnership($material);
+        $material->load(['teacher', 'classroom']);
+
+        $raw = $exporter->findOutput($material, 'slides') ?: $exporter->findOutput($material, 'standard') ?: '';
+        $slides = $exporter->parseSlides($raw);
+
+        if (empty($slides)) {
+            $slides = [[
+                'title' => $material->title,
+                'bullets' => [$material->topic, 'Tingkat: '.$material->level],
+                'notes' => '',
+            ]];
+        }
+
+        // Embed gambar sebagai base64 agar dompdf bisa memuat tanpa akses jaringan.
+        $imageData = [];
+        foreach ($slides as $i => $slide) {
+            $kw = $slide['title'].' '.$material->topic.' '.$material->level;
+            $cacheKey = 'm'.$material->id.'-pdfs-'.$i.'-'.\Illuminate\Support\Str::slug(\Illuminate\Support\Str::limit($slide['title'], 40, ''));
+            $path = $exporter->fetchImage($kw, $cacheKey);
+            $imageData[$i] = $path && is_file($path)
+                ? 'data:image/jpeg;base64,'.base64_encode(file_get_contents($path))
+                : null;
+        }
+
+        $pdf = Pdf::loadView('teacher.material-slides-pdf', [
+            'material'  => $material,
+            'slides'    => $slides,
+            'imageData' => $imageData,
+        ])->setPaper('a4', 'landscape');
+
+        $filename = 'Slide-PDF-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Unduh PDF infografis 1 halaman dengan blok-blok visual & gambar.
+     */
+    public function downloadInfographicPdf(Material $material, MaterialExportService $exporter)
+    {
+
+        $this->authorizeOwnership($material);
+        $material->load(['teacher', 'classroom']);
+
+        $raw = $exporter->findOutput($material, 'infographic');
+        if (! $raw) {
+            return back()->with('error', 'Materi ini belum punya format Infografis. Generate format Infografis dulu di halaman edit.');
+        }
+
+        $info = $exporter->parseInfographic($raw);
+
+        // Gambar header + tiap blok
+        $headerKw = ($info['title'] ?: $material->title).' '.$material->topic;
+        $headerKey = 'm'.$material->id.'-info-header';
+        $headerPath = $exporter->fetchImage($headerKw, $headerKey);
+        $headerData = $headerPath && is_file($headerPath)
+            ? 'data:image/jpeg;base64,'.base64_encode(file_get_contents($headerPath))
+            : null;
+
+        $blockImages = [];
+        foreach ($info['blocks'] as $i => $block) {
+            $kw = $block['title'].' '.$material->topic;
+            $key = 'm'.$material->id.'-info-b'.$i;
+            $path = $exporter->fetchImage($kw, $key);
+            $blockImages[$i] = $path && is_file($path)
+                ? 'data:image/jpeg;base64,'.base64_encode(file_get_contents($path))
+                : null;
+        }
+
+        $pdf = Pdf::loadView('teacher.material-infographic-pdf', [
+            'material'    => $material,
+            'info'        => $info,
+            'headerData'  => $headerData,
+            'blockImages' => $blockImages,
+        ])->setPaper('a4', 'portrait');
+
+        $filename = 'Infografis-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
+        return $pdf->download($filename);
+    }
+
 
     /**
      * Generate soal AI — bisa pilih tipe: essay | mcq | mixed.

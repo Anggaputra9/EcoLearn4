@@ -1,10 +1,10 @@
 <x-guest-layout>
     <div x-data="otpForm(60)" x-init="init()">
-        <h2 class="text-2xl font-bold text-slate-800 mb-1">Verifikasi Email</h2>
+        <h2 class="text-2xl font-bold text-slate-800 mb-1">Verifikasi Login</h2>
         <p class="text-sm text-slate-500 mb-6">
-            Kami sudah mengirim kode 6 digit ke
+            Demi keamanan, kami mengirim kode 6 digit ke
             <span class="font-semibold text-emerald-700">{{ $email }}</span>.
-            Masukkan kode untuk menyelesaikan pendaftaran. Kode berlaku 10 menit.
+            Masukkan kode untuk menyelesaikan masuk. Kode berlaku 10 menit.
         </p>
 
         @if (session('status'))
@@ -25,7 +25,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('register.otp.verify') }}" class="space-y-4">
+        <form method="POST" action="{{ route('login.otp.verify') }}" class="space-y-4">
             @csrf
 
             <div>
@@ -45,28 +45,30 @@
                 <input type="hidden" name="code" x-ref="hiddenCode" value="">
             </div>
 
-            <button class="btn-primary w-full py-3" :disabled="value.length !== 6">Verifikasi &amp; Buat Akun</button>
-
-            <div class="flex items-center justify-between text-sm">
-                <a href="{{ route('register') }}" class="text-slate-500 hover:text-slate-700">← Ganti email</a>
-            </div>
+            <button class="btn-primary w-full py-3" :disabled="value.length !== 6">Verifikasi &amp; Masuk</button>
         </form>
 
-        <form method="POST" action="{{ route('register.otp.resend') }}" class="mt-3 text-center"
-              x-on:submit="onResendSubmit($event)">
-            @csrf
-            <button type="submit"
-                    :disabled="cooldown > 0"
-                    class="text-sm font-medium transition"
-                    :class="cooldown > 0
-                            ? 'text-slate-400 cursor-not-allowed'
-                            : 'text-emerald-600 hover:underline'">
-                <span x-show="cooldown > 0">
-                    Kirim ulang kode dalam <span x-text="formatCooldown()"></span>
-                </span>
-                <span x-show="cooldown <= 0">Kirim ulang kode</span>
-            </button>
-        </form>
+        <div class="mt-3 flex items-center justify-between text-sm">
+            <form method="POST" action="{{ route('login.otp.cancel') }}">
+                @csrf
+                <button class="text-slate-500 hover:text-slate-700">← Batalkan &amp; login lain akun</button>
+            </form>
+            <form method="POST" action="{{ route('login.otp.resend') }}"
+                  x-on:submit="onResendSubmit($event)">
+                @csrf
+                <button type="submit"
+                        :disabled="cooldown > 0"
+                        class="font-medium transition"
+                        :class="cooldown > 0
+                                ? 'text-slate-400 cursor-not-allowed'
+                                : 'text-emerald-600 hover:underline'">
+                    <span x-show="cooldown > 0">
+                        Kirim ulang kode dalam <span x-text="formatCooldown()"></span>
+                    </span>
+                    <span x-show="cooldown <= 0">Kirim ulang kode</span>
+                </button>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -87,8 +89,6 @@
 
                 sync() {
                     this.value = this.cells().map(c => c.value).join('').slice(0, 6);
-                    // Tulis langsung ke hidden input agar pasti ter-submit (tanpa
-                    // menunggu microtask Alpine x-bind).
                     if (this.$refs.hiddenCode) {
                         this.$refs.hiddenCode.value = this.value;
                     }
@@ -156,8 +156,6 @@
                         e.preventDefault();
                         return;
                     }
-                    // Setelah submit, halaman akan reload; siapkan timestamp baru
-                    // agar countdown lanjut di halaman berikutnya.
                     localStorage.setItem(this.cooldownKey(), String(Date.now() + 60 * 1000));
                 },
 

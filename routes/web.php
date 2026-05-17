@@ -47,6 +47,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/profile/theme', [ProfileController::class, 'updateTheme'])->name('profile.theme');
+    Route::post('/profile/otp-login', [ProfileController::class, 'updateOtpLogin'])->name('profile.otpLogin');
 
     // Diskusi (semua role yang punya akses materi)
     Route::post('/discussions/{material}', [DiscussionController::class, 'store'])->name('discussions.store');
@@ -122,16 +123,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Materi
         Route::post('/materials/generate-ajax',         [TeacherController::class, 'generateMaterialAjax'])->name('materials.generate.ajax');
+        Route::get('/materials/next-meeting',           [TeacherController::class, 'nextMeetingNumber'])->name('materials.nextMeeting');
         Route::post('/materials',                       [TeacherController::class, 'storeMaterial'])->name('materials.store');
         // Halaman create lama dihapus — workflow sekarang pakai modal di /teacher.
         // Rute disisakan agar link/bookmark lama tidak 500; arahkan ke index.
         Route::get('/materials/create',                 fn () => redirect()->route('teacher.index'))->name('materials.create');
+
+        // Histori materi (termasuk yang sudah dihapus)
+        Route::get('/materials/history',                [TeacherController::class, 'materialHistory'])->name('materials.history');
+        Route::post('/materials/{id}/restore',          [TeacherController::class, 'restoreMaterial'])->name('materials.restore')->whereNumber('id');
+        Route::delete('/materials/{id}/force',          [TeacherController::class, 'forceDestroyMaterial'])->name('materials.force')->whereNumber('id');
+
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/pdf',         [TeacherController::class, 'downloadMaterialPdf'])->name('materials.pdf');
+        Route::get('/materials/{material}/slides.pptx', [TeacherController::class, 'downloadSlidesPptx'])->name('materials.slides.pptx');
+        Route::get('/materials/{material}/slides.pdf',  [TeacherController::class, 'downloadSlidesPdf'])->name('materials.slides.pdf');
+        Route::get('/materials/{material}/infographic.pdf', [TeacherController::class, 'downloadInfographicPdf'])->name('materials.infographic.pdf');
+
 
         Route::get('/materials/{material}/edit',        [TeacherController::class, 'editMaterial'])->name('materials.edit');
         Route::put('/materials/{material}',             [TeacherController::class, 'updateMaterial'])->name('materials.update');
         Route::delete('/materials/{material}',          [TeacherController::class, 'destroyMaterial'])->name('materials.destroy');
+
 
         // Soal
         Route::post('/materials/{material}/questions',          [TeacherController::class, 'generateQuestions'])->name('questions.generate');
@@ -152,6 +165,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Ujian (per materi)
         Route::post('/materials/{material}/exams', [ExamController::class, 'store'])->name('exams.store');
+        // Index ujian global guru (lintas materi/kelas)
+        Route::get('/exams',                       [ExamController::class, 'index'])->name('exams.index');
         Route::get('/exams/{exam}',                [ExamController::class, 'show'])->name('exams.show');
         Route::put('/exams/{exam}',                [ExamController::class, 'update'])->name('exams.update');
         Route::delete('/exams/{exam}',             [ExamController::class, 'destroy'])->name('exams.destroy');
@@ -183,6 +198,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/classrooms/{classroom}/leave',  [StudentClassroomController::class, 'leave'])->name('classrooms.leave');
 
         // Ujian
+        Route::get('/exams',                                 [ExamRunController::class, 'index'])->name('exams.index');
         Route::get('/exams/{exam}',                          [ExamRunController::class, 'lobby'])->name('exams.lobby');
         Route::post('/exams/{exam}/start',                   [ExamRunController::class, 'start'])->name('exams.start');
         Route::get('/exams/{exam}/run',                      [ExamRunController::class, 'run'])->name('exams.run');

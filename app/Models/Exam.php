@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Exam extends Model
 {
     protected $fillable = [
+        'uuid',
         'material_id', 'classroom_id', 'teacher_id',
         'title', 'description',
         'duration_minutes', 'starts_at', 'ends_at', 'status',
@@ -17,6 +19,23 @@ class Exam extends Model
         'grading_mode',
         'show_result_after_submit', 'show_leaderboard', 'allow_review_answer',
     ];
+
+    /**
+     * Pakai UUID sebagai route binding key, ID numerik tetap dipakai internal.
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $exam) {
+            if (empty($exam->uuid)) {
+                $exam->uuid = (string) Str::uuid();
+            }
+        });
+    }
 
     protected $casts = [
         'starts_at'                => 'datetime',

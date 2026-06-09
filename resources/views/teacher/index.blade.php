@@ -275,19 +275,15 @@
                             </div>
                         </div>
                         <template x-if="out.format === 'slides' && (out.preview_url || out.html_path)">
-                            <div class="space-y-2">
+                            <div class="space-y-3">
                                 <p class="text-xs text-slate-500" x-text="out.content"></p>
-                                <div class="slides-preview-frame w-full">
-                                    <div class="relative w-full aspect-video rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
-                                        <iframe
-                                            :src="out.preview_url + (out.preview_url.includes('?') ? '&' : '?') + 'embed=1'"
-                                            title="Pratinjau presentasi"
-                                            class="absolute inset-0 w-full h-full border-0 bg-white"
-                                            scrolling="no"
-                                            sandbox="allow-scripts allow-same-origin"
-                                        ></iframe>
-                                    </div>
-                                </div>
+                                <a x-show="out.preview_url"
+                                   :href="out.preview_url"
+                                   target="_blank"
+                                   rel="noopener"
+                                   class="btn-primary inline-flex items-center gap-2 text-sm">
+                                    <x-icon name="monitor" class="w-4 h-4"/> Tampilkan PPT
+                                </a>
                                 <p class="text-[11px] text-slate-400">Presentasi HTML kreatif — gambar (jika ada) di-scrape & disimpan permanen di server.</p>
                             </div>
                         </template>

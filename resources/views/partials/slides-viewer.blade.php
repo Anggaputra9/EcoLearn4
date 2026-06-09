@@ -13,12 +13,11 @@
                 <x-icon name="monitor" class="w-3.5 h-3.5"/> Buka layar penuh
             </a>
         </div>
-        <div class="rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900 shadow-inner">
+        <div class="w-full aspect-video rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900 shadow-inner">
             <iframe
                 src="{{ $slidesRoute }}"
                 title="Presentasi {{ $material->title }}"
-                class="w-full border-0 bg-white"
-                style="height: min(70vh, 540px);"
+                class="w-full h-full border-0 bg-white"
                 loading="lazy"
                 sandbox="allow-scripts allow-same-origin"
             ></iframe>

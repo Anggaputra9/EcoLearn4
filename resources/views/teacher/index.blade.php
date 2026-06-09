@@ -277,12 +277,11 @@
                         <template x-if="out.format === 'slides' && (out.preview_url || out.html_path)">
                             <div class="space-y-2">
                                 <p class="text-xs text-slate-500" x-text="out.content"></p>
-                                <div class="rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
+                                <div class="w-full aspect-video rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
                                     <iframe
                                         :src="out.preview_url"
                                         title="Pratinjau presentasi"
-                                        class="w-full border-0 bg-white"
-                                        style="height: min(60vh, 480px);"
+                                        class="w-full h-full border-0 bg-white"
                                         sandbox="allow-scripts allow-same-origin"
                                     ></iframe>
                                 </div>

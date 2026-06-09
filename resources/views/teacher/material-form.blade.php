@@ -134,8 +134,10 @@
                                 <div class="space-y-2">
                                     <p class="text-xs text-slate-500" x-text="out.content"></p>
                                     @if($slidesViewRoute)
-                                        <div class="w-full aspect-video rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
-                                            <iframe src="{{ $slidesViewRoute }}" title="Presentasi" class="w-full h-full border-0 bg-white" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>
+                                        <div class="slides-preview-frame w-full">
+                                            <div class="relative w-full aspect-video rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
+                                                <iframe src="{{ $slidesViewRoute }}?embed=1" title="Presentasi" class="absolute inset-0 w-full h-full border-0 bg-white" loading="lazy" scrolling="no" sandbox="allow-scripts allow-same-origin"></iframe>
+                                            </div>
                                         </div>
                                     @endif
                                     <p class="text-[11px] text-slate-400">Presentasi HTML tersimpan. Generate ulang dari halaman utama untuk memperbarui deck.</p>

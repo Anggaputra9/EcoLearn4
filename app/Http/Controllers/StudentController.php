@@ -120,13 +120,13 @@ class StudentController extends Controller
         return $pdf->download($filename);
     }
 
-    public function viewSlidesPresentation(Material $material, MaterialPresentationService $presentations): Response
+    public function viewSlidesPresentation(Request $request, Material $material, MaterialPresentationService $presentations): Response
     {
         $this->ensureCanAccess($material);
         $path = $presentations->findSlidesPath($material);
         abort_unless($path, 404, 'Presentasi belum tersedia.');
 
-        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path), $request->boolean('embed'));
         abort_unless($html, 404, 'File presentasi tidak ditemukan.');
 
         return response($html, 200, [

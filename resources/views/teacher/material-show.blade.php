@@ -81,10 +81,13 @@
     @php
         $defaultTab = request('tab', 'materi');
         if (! in_array($defaultTab, ['materi', 'soal'], true)) $defaultTab = 'materi';
+        $hasSlidesDeck = collect($material->outputBundle())->contains(
+            fn ($o) => ($o['format'] ?? '') === 'slides' && ! empty($o['html_path'])
+        );
     @endphp
 
     <div x-data="{ tab: '{{ $defaultTab }}' }" class="grid lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 space-y-6">
+        <div class="{{ $hasSlidesDeck ? 'lg:col-span-3' : 'lg:col-span-2' }} space-y-6">
 
             {{-- Tab switcher --}}
             <div class="glass p-1.5 inline-flex gap-1">
@@ -286,7 +289,7 @@
         </div>
 
         {{-- Sidebar kanan: Ujian --}}
-        <div class="space-y-6">
+        <div class="space-y-6 {{ $hasSlidesDeck ? 'lg:col-span-3 lg:grid lg:grid-cols-2 gap-6' : '' }}">
             <div class="glass p-6">
                 <div class="flex items-center justify-between mb-3">
                     <h3 class="font-semibold text-slate-800 dark:text-slate-100">Ujian</h3>

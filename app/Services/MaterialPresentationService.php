@@ -166,9 +166,90 @@ class MaterialPresentationService
         return $html;
     }
 
-    public function prepareForDisplay(string $html): string
+    public function prepareForDisplay(string $html, bool $embed = false): string
     {
-        return $this->normalizeHtml($this->repairSlideDeck($html));
+        $html = $this->normalizeHtml($this->repairSlideDeck($html));
+
+        return $embed ? $this->applyEmbedMode($html) : $html;
+    }
+
+    /**
+     * Mode iframe: isi penuh frame 16:9 tanpa scroll (hilangkan padding/min-h-screen body).
+     */
+    protected function applyEmbedMode(string $html): string
+    {
+        // Navigasi di dalam <main> agar tidak menambah tinggi dokumen iframe.
+        $html = preg_replace(
+            '/(<\/main>)\s*(<div id="ecolearn-slide-nav"[^>]*>[\s\S]*?<\/div>)/i',
+            '$2$1',
+            $html
+        ) ?? $html;
+
+        $css = <<<'CSS'
+<style data-embed-mode>
+  html, body {
+    height: 100% !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    display: block !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    background: #0f172a !important;
+  }
+  body.min-h-screen,
+  body.flex {
+    min-height: 0 !important;
+    height: 100% !important;
+    display: block !important;
+  }
+  body > main,
+  main {
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    aspect-ratio: unset !important;
+    overflow: hidden !important;
+  }
+  main.aspect-video,
+  main.max-w-6xl {
+    aspect-ratio: unset !important;
+    max-width: none !important;
+  }
+  section[data-slide] {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: hidden !important;
+  }
+  #ecolearn-slide-nav {
+    position: absolute !important;
+    bottom: 0.75rem !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 100 !important;
+  }
+</style>
+CSS;
+
+        if (preg_match('/<\/head>/i', $html)) {
+            $html = preg_replace('/<\/head>/i', $css."\n</head>", $html, 1) ?? $html;
+        } else {
+            $html = $css.$html;
+        }
+
+        return $html;
     }
 
     protected function stripInjectedNav(string $html): string

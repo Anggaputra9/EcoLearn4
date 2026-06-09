@@ -573,7 +573,7 @@ class TeacherController extends Controller
             'Draft presentasi tidak ditemukan.'
         );
 
-        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path), true);
         abort_unless($html, 404);
 
         return response($html, 200, [
@@ -585,13 +585,13 @@ class TeacherController extends Controller
     /**
      * Tampilkan deck HTML slides (untuk iframe / tab baru).
      */
-    public function viewSlidesPresentation(Material $material, MaterialPresentationService $presentations): Response
+    public function viewSlidesPresentation(Request $request, Material $material, MaterialPresentationService $presentations): Response
     {
         $this->authorizeOwnership($material);
         $path = $presentations->findSlidesPath($material);
         abort_unless($path, 404, 'Presentasi HTML belum tersedia.');
 
-        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path), $request->boolean('embed'));
         abort_unless($html, 404, 'File presentasi tidak ditemukan.');
 
         return response($html, 200, [

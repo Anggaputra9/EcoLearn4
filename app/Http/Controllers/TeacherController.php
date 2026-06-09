@@ -135,6 +135,8 @@ class TeacherController extends Controller
         AIService $ai,
         MaterialPresentationService $presentations
     ): JsonResponse {
+        set_time_limit(0);
+
         $data = $request->validate([
             'title'         => 'required|string|max:255',
             'topic'         => 'required|string|max:255',

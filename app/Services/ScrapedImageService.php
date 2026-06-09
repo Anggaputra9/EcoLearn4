@@ -88,7 +88,7 @@ class ScrapedImageService
     protected function scrapeBingImages(string $query): array
     {
         try {
-            $res = Http::timeout(15)
+            $res = Http::timeout(10)
                 ->withHeaders([
                     'User-Agent'      => $this->userAgent,
                     'Accept-Language' => 'en-US,en;q=0.9',
@@ -132,7 +132,7 @@ class ScrapedImageService
     protected function scrapeGoogleImages(string $query): array
     {
         try {
-            $res = Http::timeout(15)
+            $res = Http::timeout(10)
                 ->withHeaders([
                     'User-Agent'      => $this->userAgent,
                     'Accept-Language' => 'en-US,en;q=0.9',
@@ -179,7 +179,7 @@ class ScrapedImageService
     protected function downloadBytes(string $url): ?string
     {
         try {
-            $res = Http::timeout(20)
+            $res = Http::timeout(10)
                 ->withHeaders([
                     'User-Agent' => $this->userAgent,
                     'Referer'    => 'https://www.bing.com/',

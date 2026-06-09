@@ -222,18 +222,74 @@ class AIService
         if ($sys) $messages[] = ['role' => 'system', 'content' => $sys];
         $messages[] = ['role' => 'user', 'content' => $prompt];
 
-        $payload = ['model' => $model, 'messages' => $messages, 'temperature' => $wantJson ? 0.3 : 0.7];
-        if ($wantJson) $payload['response_format'] = ['type' => 'json_object'];
+        $payload = [
+            'model'       => $model,
+            'messages'    => $messages,
+            'temperature' => $wantJson ? 0.3 : 0.7,
+            'stream'      => false,
+        ];
+        if ($wantJson) {
+            $payload['response_format'] = ['type' => 'json_object'];
+        }
 
-        $res = Http::withToken($apiKey)->timeout($this->timeout)->acceptJson()->asJson()->post($url, $payload);
+        $res = Http::withToken($apiKey)->timeout($this->timeout)->post($url, $payload);
         if (! $res->successful()) {
             throw new RuntimeException(strtoupper($provider).' '.$res->status().': '.mb_substr($res->body(), 0, 300));
         }
-        $text = $res->json('choices.0.message.content');
-        if (! is_string($text) || $text === '') {
+
+        $text = $this->extractOpenAiText($res->body());
+        if ($text === '') {
             throw new RuntimeException(strtoupper($provider).' tidak mengembalikan teks.');
         }
+
         return $text;
+    }
+
+    /**
+     * Ambil teks dari respons OpenAI-compatible (JSON atau SSE stream).
+     */
+    protected function extractOpenAiText(string $body): string
+    {
+        $body = trim($body);
+        if ($body === '') {
+            return '';
+        }
+
+        if (! str_starts_with($body, 'data:')) {
+            $json = json_decode($body, true);
+            $text = $json['choices'][0]['message']['content'] ?? null;
+
+            return is_string($text) ? $text : '';
+        }
+
+        $parts = [];
+        foreach (preg_split('/\r?\n/', $body) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line === 'data: [DONE]') {
+                continue;
+            }
+            if (! str_starts_with($line, 'data:')) {
+                continue;
+            }
+
+            $chunk = json_decode(substr($line, 5), true);
+            if (! is_array($chunk)) {
+                continue;
+            }
+
+            $delta = $chunk['choices'][0]['delta']['content'] ?? null;
+            if (is_string($delta) && $delta !== '') {
+                $parts[] = $delta;
+                continue;
+            }
+
+            $message = $chunk['choices'][0]['message']['content'] ?? null;
+            if (is_string($message) && $message !== '') {
+                $parts[] = $message;
+            }
+        }
+
+        return implode('', $parts);
     }
 
     protected function callAnthropic(string $apiKey, string $model, string $prompt, ?string $sys, bool $wantJson): string

@@ -421,7 +421,9 @@
                         this.activeTab = 0;
                         this.step = 2;
                     } catch (e) {
-                        this.error = e.message;
+                        this.error = e?.message === 'Failed to fetch'
+                            ? 'Koneksi terputus — generate slide butuh 2–3 menit. Coba lagi atau pilih format lain dulu.'
+                            : (e.message || 'Terjadi kesalahan.');
                     } finally {
                         this.loading = false;
                         window.aiLoader?.hide();
@@ -457,7 +459,9 @@
                             this.outputs[i].preview_url = data.outputs[0].preview_url || '';
                         }
                     } catch (e) {
-                        this.error = e.message;
+                        this.error = e?.message === 'Failed to fetch'
+                            ? 'Koneksi terputus — generate slide butuh 2–3 menit. Coba lagi.'
+                            : (e.message || 'Terjadi kesalahan.');
                     } finally {
                         this.loading = false;
                         window.aiLoader?.hide();

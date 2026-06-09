@@ -73,6 +73,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/ai',          [SettingController::class, 'hub'])->name('admin.ai');
         Route::put('/ai/general',  [SettingController::class, 'update'])->name('admin.ai.update');
         Route::post('/ai/test',    [SettingController::class, 'test'])->name('admin.ai.test');
+        Route::post('/ai/scrape-images/test', [SettingController::class, 'testScrapedImages'])->name('admin.ai.scrape-images.test');
+        Route::post('/ai/custom-providers', [SettingController::class, 'storeCustomProvider'])->name('admin.ai.custom.store');
+        Route::put('/ai/custom-providers/{slug}', [SettingController::class, 'updateCustomProvider'])->name('admin.ai.custom.update');
+        Route::delete('/ai/custom-providers/{slug}', [SettingController::class, 'destroyCustomProvider'])->name('admin.ai.custom.destroy');
+        Route::get('/ai/custom-providers/preview-models', [SettingController::class, 'previewCustomModels'])->name('admin.ai.custom.preview');
 
         // Backward compat — tetap arahkan URL lama ke halaman gabungan
         Route::get('/settings',       fn () => redirect('/admin/ai?tab=general'))->name('admin.settings');
@@ -121,6 +126,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Materi
         Route::post('/materials/generate-ajax',         [TeacherController::class, 'generateMaterialAjax'])->name('materials.generate.ajax');
+        Route::get('/materials/slides-draft/{uuid}',    [TeacherController::class, 'viewSlidesDraft'])->name('materials.slides.draft');
         Route::get('/materials/next-meeting',           [TeacherController::class, 'nextMeetingNumber'])->name('materials.nextMeeting');
         Route::post('/materials',                       [TeacherController::class, 'storeMaterial'])->name('materials.store');
         // Halaman create lama dihapus — workflow sekarang pakai modal di /teacher.
@@ -134,6 +140,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/materials/{material}',             [TeacherController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/pdf',         [TeacherController::class, 'downloadMaterialPdf'])->name('materials.pdf');
+        Route::get('/materials/{material}/slides.html', [TeacherController::class, 'viewSlidesPresentation'])->name('materials.slides.view');
         Route::get('/materials/{material}/slides.pptx', [TeacherController::class, 'downloadSlidesPptx'])->name('materials.slides.pptx');
         Route::get('/materials/{material}/slides.pdf',  [TeacherController::class, 'downloadSlidesPdf'])->name('materials.slides.pdf');
         Route::get('/materials/{material}/infographic.pdf', [TeacherController::class, 'downloadInfographicPdf'])->name('materials.infographic.pdf');
@@ -185,6 +192,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/',                              [StudentController::class, 'index'])->name('index');
         Route::get('/materials/{material}',          [StudentController::class, 'showMaterial'])->name('materials.show');
         Route::get('/materials/{material}/pdf',      [StudentController::class, 'downloadMaterialPdf'])->name('materials.pdf');
+        Route::get('/materials/{material}/slides.html', [StudentController::class, 'viewSlidesPresentation'])->name('materials.slides.view');
         Route::get('/questions/{question}/answer',   [StudentController::class, 'answerForm'])->name('questions.answer');
         Route::post('/questions/{question}/answer',  [StudentController::class, 'submitAnswer'])->name('questions.submit');
         Route::get('/submissions/{submission}',      [StudentController::class, 'showSubmission'])->name('submissions.show');

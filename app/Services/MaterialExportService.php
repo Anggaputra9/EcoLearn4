@@ -218,10 +218,33 @@ class MaterialExportService
      * Bangun file .pptx berisi seluruh slide. Kembalikan path file
      * sementara — pemanggil bertanggung jawab menghapus setelah dikirim.
      */
+    /**
+     * Ambil struktur slide dari HTML deck atau teks outline.
+     *
+     * @return array<int, array{title:string, bullets:array<int,string>, notes:string}>
+     */
+    public function resolveSlides(Material $material): array
+    {
+        $presentations = app(MaterialPresentationService::class);
+        $path = $presentations->findSlidesPath($material);
+        if ($path) {
+            $html = $presentations->read($path);
+            if ($html) {
+                $parsed = $presentations->parseHtmlSlides($html);
+                if (! empty($parsed)) {
+                    return $parsed;
+                }
+            }
+        }
+
+        $raw = $this->findOutput($material, 'slides') ?: $this->findOutput($material, 'standard') ?: '';
+
+        return $this->parseSlides($raw);
+    }
+
     public function buildPptx(Material $material): string
     {
-        $raw = $this->findOutput($material, 'slides') ?: $this->findOutput($material, 'standard') ?: '';
-        $slides = $this->parseSlides($raw);
+        $slides = $this->resolveSlides($material);
 
         // Selalu ada minimal 1 slide judul.
         if (empty($slides)) {

@@ -9,7 +9,7 @@
     @php
         $formatsMeta = \App\Models\Material::formats();
         $bundle = $material ? $material->outputBundle() : [];
-        if (empty($bundle)) {
+        if (empty($bundle) && $material) {
             $bundle = [[
                 'format' => $material->format ?? 'standard',
                 'label'  => \App\Models\Material::formatLabel($material->format ?? 'standard'),
@@ -17,6 +17,7 @@
                 'content'=> $material->content ?? '',
             ]];
         }
+        $slidesViewRoute = $material ? route('teacher.materials.slides.view', $material) : null;
     @endphp
 
     <div class="space-y-6">
@@ -129,7 +130,20 @@
                                     <x-icon name="trash" class="w-3.5 h-3.5"/> Hapus format
                                 </button>
                             </div>
-                            <textarea x-model="out.content" rows="14" required class="input-glass font-mono text-sm leading-relaxed"></textarea>
+                            <template x-if="out.format === 'slides' && out.html_path">
+                                <div class="space-y-2">
+                                    <p class="text-xs text-slate-500" x-text="out.content"></p>
+                                    @if($slidesViewRoute)
+                                        <div class="rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
+                                            <iframe src="{{ $slidesViewRoute }}" title="Presentasi" class="w-full border-0 bg-white" style="height: min(60vh, 480px);" loading="lazy" sandbox="allow-scripts allow-same-origin"></iframe>
+                                        </div>
+                                    @endif
+                                    <p class="text-[11px] text-slate-400">Presentasi HTML tersimpan. Generate ulang dari halaman utama untuk memperbarui deck.</p>
+                                </div>
+                            </template>
+                            <template x-if="out.format !== 'slides' || !out.html_path">
+                                <textarea x-model="out.content" rows="14" required class="input-glass font-mono text-sm leading-relaxed"></textarea>
+                            </template>
                         </div>
                     </template>
 
@@ -141,6 +155,8 @@
                             <input type="hidden" :name="`outputs[${i}][format]`" :value="out.format">
                             <input type="hidden" :name="`outputs[${i}][label]`"  :value="out.label">
                             <input type="hidden" :name="`outputs[${i}][content]`" :value="out.content">
+                            <input type="hidden" :name="`outputs[${i}][html_path]`" :value="out.html_path || ''">
+                            <input type="hidden" :name="`outputs[${i}][html_content]`" :value="out.html_content || ''">
                         </span>
                     </template>
                 </div>
@@ -163,7 +179,11 @@
             return {
                 formatsMeta: formatsMeta || {},
                 outputs: (initialOutputs || []).map(o => ({
-                    format: o.format, label: o.label, content: o.content,
+                    format: o.format,
+                    label: o.label,
+                    content: o.content,
+                    html_path: o.html_path || '',
+                    html_content: o.html_content || '',
                 })),
                 active: 0,
                 showAdd: false,

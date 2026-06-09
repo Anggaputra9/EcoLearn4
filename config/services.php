@@ -42,4 +42,9 @@ return [
         'timeout' => (int) env('GEMINI_TIMEOUT', 120),
     ],
 
+    'google_cse' => [
+        'api_key' => env('GOOGLE_CSE_API_KEY'),
+        'cx'      => env('GOOGLE_CSE_CX'),
+    ],
+
 ];

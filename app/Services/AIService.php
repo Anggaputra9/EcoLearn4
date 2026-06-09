@@ -19,6 +19,7 @@ use RuntimeException;
  *   - openrouter  (OpenRouter, OpenAI-compatible)
  *   - groq        (Groq, OpenAI-compatible)
  *   - hidepulsa   (HidePulsa AI, OpenAI-compatible: https://ai.hidepulsa.com/v1)
+ *   - custom_*    (Provider kustom OpenAI-compatible, dikonfigurasi dari admin/ai)
  *
  * Daftar model tiap provider diambil LIVE dari endpoint masing-masing dan
  * di-cache 10 menit. Jika gagal, fallback ke daftar statis di kelas ini.
@@ -43,14 +44,27 @@ class AIService
     public function defaultModel(?string $provider = null): string
     {
         $provider = $provider ?: $this->defaultProvider();
-        return (string) (Setting::get("ai.default_model.$provider") ?? match ($provider) {
+        $saved = Setting::get("ai.default_model.$provider");
+        if ($saved) {
+            return (string) $saved;
+        }
+
+        if ($this->isCustomProvider($provider)) {
+            $models = $this->listModels($provider);
+            if (! empty($models)) {
+                return (string) $models[0];
+            }
+            return 'gpt-4o-mini';
+        }
+
+        return match ($provider) {
             'openai'     => 'gpt-4o-mini',
             'anthropic'  => 'claude-3-5-haiku-20241022',
             'openrouter' => 'openrouter/auto',
             'groq'       => 'llama-3.3-70b-versatile',
             'hidepulsa'  => 'gpt-4o-mini',
             default      => 'gemini-2.0-flash',
-        });
+        };
     }
 
     /** Daftar key aktif untuk provider, urut prioritas. */
@@ -252,6 +266,10 @@ class AIService
      * ============================================================ */
     protected function openAiCompletionsUrl(string $provider): string
     {
+        if ($urls = $this->customProviderUrls($provider)) {
+            return $urls['chat'];
+        }
+
         return match ($provider) {
             'openrouter' => 'https://openrouter.ai/api/v1/chat/completions',
             'groq'       => 'https://api.groq.com/openai/v1/chat/completions',
@@ -262,6 +280,10 @@ class AIService
 
     protected function modelsListUrl(string $provider): ?string
     {
+        if ($urls = $this->customProviderUrls($provider)) {
+            return $urls['models'];
+        }
+
         return match ($provider) {
             'openai'     => 'https://api.openai.com/v1/models',
             'openrouter' => 'https://openrouter.ai/api/v1/models',
@@ -372,8 +394,98 @@ class AIService
         }
     }
 
+    public function isCustomProvider(string $provider): bool
+    {
+        return str_starts_with($provider, 'custom_');
+    }
+
+    /** @return array<string, array{name:string,base_url:string,chat_url?:string,models_url?:string}> */
+    public function customProviderConfigs(): array
+    {
+        $raw = (string) (Setting::get('ai.custom_providers') ?? '{}');
+        $data = json_decode($raw, true);
+
+        return is_array($data) ? $data : [];
+    }
+
+    /** @return array<string, string> */
+    public function customProviders(): array
+    {
+        $list = [];
+        foreach ($this->customProviderConfigs() as $slug => $cfg) {
+            $list[$slug] = (string) ($cfg['name'] ?? $slug);
+        }
+
+        return $list;
+    }
+
+    public function getCustomProviderConfig(string $provider): ?array
+    {
+        if (! $this->isCustomProvider($provider)) {
+            return null;
+        }
+
+        return $this->customProviderConfigs()[$provider] ?? null;
+    }
+
+    /** @return array{chat:string,models:string}|null */
+    public function customProviderUrls(string $provider): ?array
+    {
+        $cfg = $this->getCustomProviderConfig($provider);
+        if (! $cfg) {
+            return null;
+        }
+
+        $base = rtrim((string) ($cfg['base_url'] ?? ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        if (! str_ends_with($base, '/v1')) {
+            $base .= '/v1';
+        }
+
+        return [
+            'chat'   => (string) ($cfg['chat_url'] ?? $base.'/chat/completions'),
+            'models' => (string) ($cfg['models_url'] ?? $base.'/models'),
+        ];
+    }
+
+    public function saveCustomProvider(string $slug, array $config): void
+    {
+        $all = $this->customProviderConfigs();
+        $all[$slug] = [
+            'name'       => (string) ($config['name'] ?? $slug),
+            'base_url'   => rtrim((string) ($config['base_url'] ?? ''), '/'),
+            'chat_url'   => $config['chat_url'] ?? null,
+            'models_url' => $config['models_url'] ?? null,
+        ];
+        Setting::put('ai.custom_providers', json_encode($all, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'ai');
+        $this->clearModelCache($slug);
+    }
+
+    public function deleteCustomProvider(string $slug): void
+    {
+        $all = $this->customProviderConfigs();
+        unset($all[$slug]);
+        Setting::put('ai.custom_providers', json_encode($all, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'ai');
+        $this->clearModelCache($slug);
+    }
+
+    public static function makeCustomSlug(string $name): string
+    {
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $name) ?? '');
+        $slug = trim($slug, '_');
+
+        return 'custom_'.($slug !== '' ? $slug : 'provider');
+    }
+
     public function staticModelList(string $provider): array
     {
+        if ($this->isCustomProvider($provider)) {
+            return [];
+        }
+
         return match ($provider) {
             'openai'     => [
                 'gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1',
@@ -407,13 +519,18 @@ class AIService
 
     public function providers(): array
     {
-        return [
+        return array_merge([
             'gemini'     => 'Google Gemini',
             'openai'     => 'OpenAI',
             'anthropic'  => 'Anthropic Claude',
             'openrouter' => 'OpenRouter',
             'groq'       => 'Groq',
             'hidepulsa'  => 'HidePulsa AI',
-        ];
+        ], $this->customProviders());
+    }
+
+    public function providerKeys(): array
+    {
+        return array_keys($this->providers());
     }
 }

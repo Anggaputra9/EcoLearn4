@@ -55,7 +55,7 @@ class Material extends Model
             'slides' => [
                 'label' => 'Slide / PPT',
                 'icon'  => 'monitor',
-                'hint'  => 'Outline presentasi per-slide siap dibawakan di kelas.',
+                'hint'  => 'Presentasi HTML kreatif (Tailwind); gambar di-scrape & disimpan permanen di server.',
             ],
             'infographic' => [
                 'label' => 'Infografis',
@@ -122,34 +122,53 @@ class Material extends Model
      * Selalu menyertakan format utama dari kolom `content` agar materi
      * lama (yang belum punya kolom outputs) tetap kelihatan.
      *
-     * @return array<int, array{format:string, label:string, icon:string, content:string}>
+     * @return array<int, array{format:string, label:string, icon:string, content:string, html_path?:string, slides_url?:string}>
      */
     public function outputBundle(): array
     {
         $bundle = [];
         $seen = [];
 
+        $enrich = function (array $item, array $source): array {
+            if (($item['format'] ?? '') === 'slides' && ! empty($source['html_path'])) {
+                $item['html_path'] = (string) $source['html_path'];
+            }
+
+            return $item;
+        };
+
         $primaryFormat = $this->format ?: 'standard';
+        $primarySource = ['html_path' => null];
+        foreach ((array) $this->outputs as $out) {
+            if (($out['format'] ?? '') === $primaryFormat) {
+                $primarySource = $out;
+                break;
+            }
+        }
+
         if (is_string($this->content) && trim($this->content) !== '') {
-            $bundle[] = [
+            $bundle[] = $enrich([
                 'format'  => $primaryFormat,
                 'label'   => self::formatLabel($primaryFormat),
                 'icon'    => self::formatIcon($primaryFormat),
                 'content' => (string) $this->content,
-            ];
+            ], $primarySource);
             $seen[$primaryFormat] = true;
         }
 
         foreach ((array) $this->outputs as $out) {
             $fmt = (string) ($out['format'] ?? 'standard');
             $txt = (string) ($out['content'] ?? '');
-            if ($txt === '' || isset($seen[$fmt])) continue;
-            $bundle[] = [
+            $hasHtml = ($fmt === 'slides' && ! empty($out['html_path']));
+            if (($txt === '' && ! $hasHtml) || isset($seen[$fmt])) {
+                continue;
+            }
+            $bundle[] = $enrich([
                 'format'  => $fmt,
                 'label'   => (string) ($out['label'] ?? self::formatLabel($fmt)),
                 'icon'    => self::formatIcon($fmt),
                 'content' => $txt,
-            ];
+            ], $out);
             $seen[$fmt] = true;
         }
 

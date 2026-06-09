@@ -74,8 +74,17 @@
                     @endif
 
                     @foreach($bundle as $out)
-                        <article x-show="fmt === '{{ $out['format'] }}'" x-cloak
-                                 class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $out['content'] }}</article>
+                        <div x-show="fmt === '{{ $out['format'] }}'" x-cloak>
+                            @if($out['format'] === 'slides')
+                                @include('partials.slides-viewer', [
+                                    'out' => $out,
+                                    'material' => $material,
+                                    'slidesRoute' => route('student.materials.slides.view', $material),
+                                ])
+                            @else
+                                <article class="whitespace-pre-wrap text-slate-800 dark:text-slate-200 leading-relaxed">{{ $out['content'] }}</article>
+                            @endif
+                        </div>
                     @endforeach
 
                     @if(empty($bundle))

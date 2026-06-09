@@ -32,6 +32,7 @@
         'moon'        => '<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
         'monitor'     => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 17h6M12 17v4m-7-4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2z"/>',
         'key'         => '<path stroke-linecap="round" stroke-linejoin="round" d="M15 7a4 4 0 11-3.464 6.064L7 18H4v-3l5.964-5.964A4 4 0 0115 7zm0 0a1 1 0 100 2 1 1 0 000-2z"/>',
+        'puzzle'      => '<path stroke-linecap="round" stroke-linejoin="round" d="M11 4a2 2 0 114 0v1h1a3 3 0 013 3v1a2 2 0 100 4v1a3 3 0 01-3 3h-1a2 2 0 11-4 0H9a3 3 0 01-3-3v-1a2 2 0 110-4V8a3 3 0 013-3h1V4z"/>',
         'school'      => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3l9 4-9 4-9-4 9-4zm0 8v8m-5-6v4l5 2 5-2v-4"/>',
         'shield-check'=> '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M12 21a9 9 0 01-9-9V5l9-2 9 2v7a9 9 0 01-9 9z"/>',
         'lock'        => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 11V7a4 4 0 118 0v4M5 11h14a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2z"/>',

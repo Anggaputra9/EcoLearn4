@@ -274,7 +274,24 @@
                                 </button>
                             </div>
                         </div>
-                        <textarea x-model="out.content" rows="14" class="input-glass font-mono text-sm leading-relaxed"></textarea>
+                        <template x-if="out.format === 'slides' && (out.preview_url || out.html_path)">
+                            <div class="space-y-2">
+                                <p class="text-xs text-slate-500" x-text="out.content"></p>
+                                <div class="rounded-2xl overflow-hidden border border-white/60 dark:border-white/10 bg-slate-900">
+                                    <iframe
+                                        :src="out.preview_url"
+                                        title="Pratinjau presentasi"
+                                        class="w-full border-0 bg-white"
+                                        style="height: min(60vh, 480px);"
+                                        sandbox="allow-scripts allow-same-origin"
+                                    ></iframe>
+                                </div>
+                                <p class="text-[11px] text-slate-400">Presentasi HTML kreatif — gambar (jika ada) di-scrape & disimpan permanen di server.</p>
+                            </div>
+                        </template>
+                        <template x-if="out.format !== 'slides' || !(out.preview_url || out.html_path)">
+                            <textarea x-model="out.content" rows="14" class="input-glass font-mono text-sm leading-relaxed"></textarea>
+                        </template>
                     </div>
                 </template>
 
@@ -294,6 +311,7 @@
                             <input type="hidden" :name="`outputs[${i}][format]`" :value="out.format">
                             <input type="hidden" :name="`outputs[${i}][label]`"  :value="out.label">
                             <input type="hidden" :name="`outputs[${i}][content]`" :value="out.content">
+                            <input type="hidden" :name="`outputs[${i}][html_path]`" :value="out.html_path || ''">
                         </span>
                     </template>
                     <input type="hidden" name="is_published" value="1">
@@ -341,7 +359,10 @@
                         && this.form.formats.length > 0;
                 },
                 get hasContent() {
-                    return this.outputs.length > 0 && this.outputs[0].content.trim() !== '';
+                    if (this.outputs.length === 0) return false;
+                    const primary = this.outputs[0];
+                    if (primary.format === 'slides' && primary.html_path) return true;
+                    return (primary.content || '').trim() !== '';
                 },
 
                 selectAllFormats() {
@@ -392,7 +413,11 @@
                         const data = await res.json();
                         if (!data.ok) throw new Error(data.message || 'AI gagal.');
                         this.outputs = (data.outputs || []).map(o => ({
-                            format: o.format, label: o.label, content: o.content,
+                            format: o.format,
+                            label: o.label,
+                            content: o.content,
+                            html_path: o.html_path || '',
+                            preview_url: o.preview_url || '',
                         }));
                         this.partial = data.partial || [];
                         this.activeTab = 0;
@@ -430,6 +455,8 @@
                         if (!data.ok) throw new Error(data.message || 'AI gagal.');
                         if (data.outputs?.[0]) {
                             this.outputs[i].content = data.outputs[0].content;
+                            this.outputs[i].html_path = data.outputs[0].html_path || '';
+                            this.outputs[i].preview_url = data.outputs[0].preview_url || '';
                         }
                     } catch (e) {
                         this.error = e.message;

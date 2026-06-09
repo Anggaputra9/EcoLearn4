@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiKey;
+use App\Models\Setting;
 use App\Services\AIService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class AiKeyController extends Controller
@@ -26,7 +28,7 @@ class AiKeyController extends Controller
     {
         $data = $request->validate([
             'label'    => 'required|string|max:120',
-            'provider' => 'required|in:'.implode(',', array_keys($ai->providers())),
+            'provider' => ['required', 'string', 'max:40', Rule::in($ai->providerKeys())],
             'model'    => 'nullable|string|max:120',
             'api_key'  => 'required|string|max:512',
             'priority' => 'nullable|integer|min:0|max:9999',
@@ -55,7 +57,7 @@ class AiKeyController extends Controller
     {
         $data = $request->validate([
             'label'    => 'required|string|max:120',
-            'provider' => 'required|in:'.implode(',', array_keys($ai->providers())),
+            'provider' => ['required', 'string', 'max:40', Rule::in($ai->providerKeys())],
             'model'    => 'nullable|string|max:120',
             'api_key'  => 'nullable|string|max:512',     // kosong = tetap
             'priority' => 'nullable|integer|min:0|max:9999',
@@ -141,19 +143,26 @@ class AiKeyController extends Controller
     public function liveModels(Request $request, AIService $ai)
     {
         $provider = (string) $request->query('provider', 'gemini');
-        if (! array_key_exists($provider, $ai->providers())) {
+        if (! in_array($provider, $ai->providerKeys(), true)) {
             return response()->json(['ok' => false, 'message' => 'Provider tidak dikenal.'], 422);
         }
         if ($request->boolean('refresh')) {
             $ai->clearModelCache($provider);
         }
         $models = $ai->listModels($provider);
+        $hasKey = $ai->activeKeysFor($provider)->isNotEmpty()
+            || AiKey::where('provider', $provider)->exists()
+            || ($provider === 'gemini' && (string) (Setting::get('gemini.api_key') ?? '') !== '');
+
         return response()->json([
             'ok'       => true,
             'provider' => $provider,
             'models'   => $models,
             'count'    => count($models),
-            'source'   => $ai->lastUsedKey() ? 'live-cached' : 'live-or-fallback',
+            'source'   => ! empty($models) && $hasKey ? 'live' : 'fallback',
+            'message'  => empty($models) && $ai->isCustomProvider($provider) && ! $hasKey
+                ? 'Tambahkan API key untuk fetch model otomatis.'
+                : null,
         ]);
     }
 }

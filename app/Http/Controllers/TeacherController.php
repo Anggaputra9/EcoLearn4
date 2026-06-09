@@ -7,6 +7,7 @@ use App\Models\Material;
 use App\Models\Question;
 use App\Services\AIService;
 use App\Services\MaterialExportService;
+use App\Services\MaterialPresentationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +16,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class TeacherController extends Controller
@@ -105,10 +108,11 @@ class TeacherController extends Controller
         return back()->with('success', 'Materi "'.$material->title.'" berhasil dipulihkan.');
     }
 
-    public function forceDestroyMaterial(int $id): RedirectResponse
+    public function forceDestroyMaterial(int $id, MaterialPresentationService $presentations): RedirectResponse
     {
         $material = Material::withTrashed()->where('teacher_id', Auth::id())->findOrFail($id);
         $title = $material->title;
+        $presentations->deleteAllForMaterial($material);
         $material->forceDelete();
         return back()->with('success', 'Materi "'.$title.'" dihapus permanen.');
     }
@@ -126,8 +130,11 @@ class TeacherController extends Controller
      * Response:
      *   { ok: true, outputs: [{format, label, content}, ...] }
      */
-    public function generateMaterialAjax(Request $request, AIService $ai): JsonResponse
-    {
+    public function generateMaterialAjax(
+        Request $request,
+        AIService $ai,
+        MaterialPresentationService $presentations
+    ): JsonResponse {
         $data = $request->validate([
             'title'         => 'required|string|max:255',
             'topic'         => 'required|string|max:255',
@@ -145,12 +152,33 @@ class TeacherController extends Controller
 
         foreach ($formats as $fmt) {
             try {
-                $text = $this->generateForFormat($ai, $fmt, $data['title'], $data['topic'], $data['level'], $custom);
-                $outputs[] = [
-                    'format'  => $fmt,
-                    'label'   => Material::formatLabel($fmt),
-                    'content' => $text,
-                ];
+                if ($fmt === 'slides') {
+                    $deckId = (string) Str::uuid();
+                    $html = $presentations->generateSlidesHtml(
+                        $ai,
+                        $data['title'],
+                        $data['topic'],
+                        $data['level'],
+                        $custom,
+                        $deckId,
+                        (int) Auth::id()
+                    );
+                    $draft = $presentations->saveDraft((int) Auth::id(), $html, $deckId);
+                    $outputs[] = [
+                        'format'      => $fmt,
+                        'label'       => Material::formatLabel($fmt),
+                        'content'     => $presentations->summarize($html, $data['title']),
+                        'html_path'   => $draft['path'],
+                        'preview_url' => route('teacher.materials.slides.draft', ['uuid' => $draft['uuid']]),
+                    ];
+                } else {
+                    $text = $this->generateForFormat($ai, $fmt, $data['title'], $data['topic'], $data['level'], $custom);
+                    $outputs[] = [
+                        'format'  => $fmt,
+                        'label'   => Material::formatLabel($fmt),
+                        'content' => $text,
+                    ];
+                }
             } catch (\Throwable $e) {
                 $errors[] = Material::formatLabel($fmt).': '.$e->getMessage();
             }
@@ -197,11 +225,8 @@ class TeacherController extends Controller
                 ."lalu daftar 5-7 poin inti dengan format 'Nomor. Judul Poin: penjelasan 1 kalimat'. "
                 ."Tutup dengan 1 kalimat refleksi nilai ekoteologi.",
 
-            'slides' => $base."\n\nTugas: susun OUTLINE SLIDE PRESENTASI siap pakai (8-12 slide). "
-                ."Format setiap slide:\n"
-                ."Slide N: <Judul Singkat>\n- Poin bullet 1\n- Poin bullet 2\n- Poin bullet 3\n"
-                ."Catatan Pengajar: <1-2 kalimat untuk dibawakan lisan>\n\n"
-                ."Slide pertama = sampul, slide terakhir = penutup/refleksi. Jangan gunakan tanda **/##.",
+            'slides' => $base."\n\nTugas: susun ringkasan slide (fallback teks). "
+                ."Format: Slide N: Judul, bullet, Catatan Pengajar.",
 
             'infographic' => $base."\n\nTugas: buat NASKAH INFOGRAFIS berbasis teks (tanpa gambar) "
                 ."yang mudah dialihkan ke desain visual. Struktur:\n"
@@ -265,7 +290,9 @@ class TeacherController extends Controller
             'outputs'         => 'nullable|array',
             'outputs.*.format'  => 'required_with:outputs|string|in:'.implode(',', $allowedFormats),
             'outputs.*.label'   => 'nullable|string|max:60',
-            'outputs.*.content' => 'required_with:outputs|string',
+            'outputs.*.content' => 'nullable|string',
+            'outputs.*.html_content' => 'nullable|string',
+            'outputs.*.html_path' => 'nullable|string|max:500',
             'classroom_id'    => 'nullable|integer|exists:classrooms,id',
             'meeting_number'  => 'nullable|integer|min:1|max:9999',
             'is_published'    => 'sometimes|boolean',
@@ -284,7 +311,12 @@ class TeacherController extends Controller
         }
 
         $primaryFormat = $data['format'] ?? 'standard';
-        $outputs = $this->sanitizeOutputs($data['outputs'] ?? null, $primaryFormat, (string) $data['content']);
+        $outputs = $this->sanitizeOutputs(
+            $data['outputs'] ?? null,
+            $primaryFormat,
+            (string) $data['content'],
+            (string) $data['title']
+        );
 
         $material = Material::create([
             'teacher_id'     => Auth::id(),
@@ -308,14 +340,54 @@ class TeacherController extends Controller
      * Normalisasi & filter outputs JSON dari form. Memastikan format utama
      * tersinkron dengan kolom `content` agar tidak ada duplikasi/ambigu.
      */
-    protected function sanitizeOutputs(?array $raw, string $primaryFormat, string $primaryContent): array
-    {
+    protected function sanitizeOutputs(
+        ?array $raw,
+        string $primaryFormat,
+        string $primaryContent,
+        string $title = ''
+    ): array {
         $allowed = array_keys(Material::formats());
+        $presentations = app(MaterialPresentationService::class);
         $clean = [];
         $seen = [];
 
+        $processRow = function (array $row) use ($presentations, $title): ?array {
+            $fmt = (string) ($row['format'] ?? '');
+            if ($fmt === 'slides') {
+                $processed = $presentations->processSlidesOutput($row, $title);
+                if (trim((string) ($processed['content'] ?? '')) === '' && empty($processed['html_path'])) {
+                    return null;
+                }
+
+                return $processed;
+            }
+
+            $txt = trim((string) ($row['content'] ?? ''));
+            if ($txt === '') {
+                return null;
+            }
+
+            return [
+                'format'  => $fmt,
+                'label'   => trim((string) ($row['label'] ?? Material::formatLabel($fmt))) ?: Material::formatLabel($fmt),
+                'content' => $txt,
+            ];
+        };
+
         // Sertakan format utama lebih dulu.
-        if (trim($primaryContent) !== '') {
+        if ($primaryFormat === 'slides') {
+            $primary = $processRow([
+                'format'       => $primaryFormat,
+                'label'        => Material::formatLabel($primaryFormat),
+                'content'      => $primaryContent,
+                'html_content' => $this->findHtmlContentInRaw($raw, 'slides'),
+                'html_path'    => $this->findHtmlPathInRaw($raw, 'slides'),
+            ]);
+            if ($primary) {
+                $clean[] = $primary;
+                $seen[$primaryFormat] = true;
+            }
+        } elseif (trim($primaryContent) !== '') {
             $clean[] = [
                 'format'  => $primaryFormat,
                 'label'   => Material::formatLabel($primaryFormat),
@@ -326,17 +398,40 @@ class TeacherController extends Controller
 
         foreach ((array) $raw as $row) {
             $fmt = (string) ($row['format'] ?? '');
-            $txt = trim((string) ($row['content'] ?? ''));
-            if (! in_array($fmt, $allowed, true) || $txt === '' || isset($seen[$fmt])) continue;
-            $clean[] = [
-                'format'  => $fmt,
-                'label'   => trim((string) ($row['label'] ?? Material::formatLabel($fmt))) ?: Material::formatLabel($fmt),
-                'content' => $txt,
-            ];
+            if (! in_array($fmt, $allowed, true) || isset($seen[$fmt])) {
+                continue;
+            }
+            $processed = $processRow($row);
+            if (! $processed) {
+                continue;
+            }
+            $clean[] = $processed;
             $seen[$fmt] = true;
         }
 
         return $clean;
+    }
+
+    protected function findHtmlContentInRaw(?array $raw, string $format): ?string
+    {
+        foreach ((array) $raw as $row) {
+            if (($row['format'] ?? '') === $format && ! empty($row['html_content'])) {
+                return (string) $row['html_content'];
+            }
+        }
+
+        return null;
+    }
+
+    protected function findHtmlPathInRaw(?array $raw, string $format): ?string
+    {
+        foreach ((array) $raw as $row) {
+            if (($row['format'] ?? '') === $format && ! empty($row['html_path'])) {
+                return (string) $row['html_path'];
+            }
+        }
+
+        return null;
     }
 
 
@@ -374,7 +469,9 @@ class TeacherController extends Controller
             'outputs'           => 'nullable|array',
             'outputs.*.format'  => 'required_with:outputs|string|in:'.implode(',', $allowedFormats),
             'outputs.*.label'   => 'nullable|string|max:60',
-            'outputs.*.content' => 'required_with:outputs|string',
+            'outputs.*.content' => 'nullable|string',
+            'outputs.*.html_content' => 'nullable|string',
+            'outputs.*.html_path' => 'nullable|string|max:500',
             'classroom_id'      => 'nullable|integer|exists:classrooms,id',
             'meeting_number'    => 'nullable|integer|min:1|max:9999',
             'is_published'      => 'sometimes|boolean',
@@ -398,25 +495,46 @@ class TeacherController extends Controller
         $data['format'] = $primaryFormat;
 
         if ($request->has('outputs')) {
-            $data['outputs'] = $this->sanitizeOutputs($data['outputs'] ?? null, $primaryFormat, (string) $data['content']);
+            $data['outputs'] = $this->sanitizeOutputs(
+                $data['outputs'] ?? null,
+                $primaryFormat,
+                (string) $data['content'],
+                (string) $data['title']
+            );
         } else {
             // Sinkronkan ulang konten utama ke entri outputs format primer agar tetap konsisten.
             $existing = (array) ($material->outputs ?? []);
             $synced = [];
             $seen = [];
-            $synced[] = [
-                'format'  => $primaryFormat,
-                'label'   => Material::formatLabel($primaryFormat),
-                'content' => (string) $data['content'],
-            ];
+            if ($primaryFormat === 'slides') {
+                $row = [
+                    'format'  => $primaryFormat,
+                    'label'   => Material::formatLabel($primaryFormat),
+                    'content' => (string) $data['content'],
+                ];
+                foreach ($existing as $ex) {
+                    if (($ex['format'] ?? '') === 'slides' && ! empty($ex['html_path'])) {
+                        $row['html_path'] = $ex['html_path'];
+                    }
+                }
+                $processed = app(MaterialPresentationService::class)->processSlidesOutput($row, (string) $data['title']);
+                $synced[] = $processed;
+            } else {
+                $synced[] = [
+                    'format'  => $primaryFormat,
+                    'label'   => Material::formatLabel($primaryFormat),
+                    'content' => (string) $data['content'],
+                ];
+            }
             $seen[$primaryFormat] = true;
             foreach ($existing as $row) {
                 $fmt = (string) ($row['format'] ?? '');
                 if ($fmt === '' || isset($seen[$fmt])) continue;
                 $synced[] = [
-                    'format'  => $fmt,
-                    'label'   => (string) ($row['label'] ?? Material::formatLabel($fmt)),
-                    'content' => (string) ($row['content'] ?? ''),
+                    'format'    => $fmt,
+                    'label'     => (string) ($row['label'] ?? Material::formatLabel($fmt)),
+                    'content'   => (string) ($row['content'] ?? ''),
+                    'html_path' => $row['html_path'] ?? null,
                 ];
                 $seen[$fmt] = true;
             }
@@ -433,11 +551,53 @@ class TeacherController extends Controller
 
 
 
-    public function destroyMaterial(Material $material): RedirectResponse
+    public function destroyMaterial(Material $material, MaterialPresentationService $presentations): RedirectResponse
     {
         $this->authorizeOwnership($material);
+        $presentations->deleteAllForMaterial($material);
         $material->delete();
         return redirect()->route('teacher.index')->with('success', 'Materi berhasil dihapus.');
+    }
+
+    /**
+     * Pratinjau draft presentasi sebelum materi disimpan.
+     */
+    public function viewSlidesDraft(string $uuid, MaterialPresentationService $presentations): Response
+    {
+        $deckPath = MaterialPresentationService::DRAFT_DIR.'/'.Auth::id().'/'.$uuid.'/deck.html';
+        $legacyPath = MaterialPresentationService::DRAFT_DIR.'/'.Auth::id().'/'.$uuid.'.html';
+        $path = Storage::disk(MaterialPresentationService::DISK)->exists($deckPath) ? $deckPath : $legacyPath;
+        abort_unless(
+            Storage::disk(MaterialPresentationService::DISK)->exists($path),
+            404,
+            'Draft presentasi tidak ditemukan.'
+        );
+
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        abort_unless($html, 404);
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'X-Frame-Options' => 'SAMEORIGIN',
+        ]);
+    }
+
+    /**
+     * Tampilkan deck HTML slides (untuk iframe / tab baru).
+     */
+    public function viewSlidesPresentation(Material $material, MaterialPresentationService $presentations): Response
+    {
+        $this->authorizeOwnership($material);
+        $path = $presentations->findSlidesPath($material);
+        abort_unless($path, 404, 'Presentasi HTML belum tersedia.');
+
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        abort_unless($html, 404, 'File presentasi tidak ditemukan.');
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'X-Frame-Options' => 'SAMEORIGIN',
+        ]);
     }
 
     /**
@@ -485,8 +645,7 @@ class TeacherController extends Controller
         $this->authorizeOwnership($material);
         $material->load(['teacher', 'classroom']);
 
-        $raw = $exporter->findOutput($material, 'slides') ?: $exporter->findOutput($material, 'standard') ?: '';
-        $slides = $exporter->parseSlides($raw);
+        $slides = $exporter->resolveSlides($material);
 
         if (empty($slides)) {
             $slides = [[

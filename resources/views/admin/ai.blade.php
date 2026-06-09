@@ -16,6 +16,12 @@
                     class="px-4 py-2 rounded-xl font-medium transition">
                 <x-icon name="sparkles" class="w-4 h-4 inline -mt-0.5"/> Umum
             </button>
+            <button type="button" @click="tab='custom'"
+                    :class="tab==='custom' ? 'bg-emerald-500 text-white shadow' : 'text-slate-600 dark:text-slate-300'"
+                    class="px-4 py-2 rounded-xl font-medium transition">
+                <x-icon name="puzzle" class="w-4 h-4 inline -mt-0.5"/> Provider Kustom
+                <span class="ml-1 text-xs opacity-80">({{ count($customProviders) }})</span>
+            </button>
             <button type="button" @click="tab='keys'"
                     :class="tab==='keys' ? 'bg-emerald-500 text-white shadow' : 'text-slate-600 dark:text-slate-300'"
                     class="px-4 py-2 rounded-xl font-medium transition">
@@ -95,6 +101,23 @@
                     @csrf
                     <button class="btn-secondary"><x-icon name="rocket" class="w-4 h-4"/> Tes Koneksi AI</button>
                 </form>
+
+                <hr class="my-6 border-white/40 dark:border-white/10">
+
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 grid place-items-center text-white shrink-0">
+                        <x-icon name="photo" class="w-5 h-5"/>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Gambar Slide PPT (Scraping)</h3>
+                        <p class="text-xs text-slate-500">AI bebas desain; jika pakai gambar, sistem scrape dari Google Images lalu unduh permanen ke server.</p>
+                    </div>
+                    <span class="badge badge-emerald ml-auto">Otomatis</span>
+                </div>
+                <form method="POST" action="{{ route('admin.ai.scrape-images.test') }}">
+                    @csrf
+                    <button class="btn-secondary text-sm"><x-icon name="photo" class="w-4 h-4"/> Tes Scrape & Simpan Gambar</button>
+                </form>
             </div>
 
 
@@ -106,10 +129,162 @@
                     <li>Daftar model di-fetch <span class="font-semibold">live</span> dari endpoint provider (cache 10 menit). Klik <span class="font-medium">Muat ulang</span> untuk paksa refresh.</li>
                     <li>Saat respons <span class="font-mono">429</span> / kuota habis, sistem otomatis tandai key sebagai exhausted dan pindah ke key berikutnya hingga periode reset.</li>
                     <li>Atur prioritas key di tab <span class="font-semibold">API Key Pool</span>. Kuota & periode reset dipasang otomatis sesuai tier free tiap provider.</li>
-                    <li>Provider yang didukung: Gemini, OpenAI, Anthropic, OpenRouter, Groq, dan <span class="font-medium">HidePulsa AI</span> (<span class="font-mono">ai.hidepulsa.com/v1</span>, OpenAI-compatible).</li>
+                    <li>Provider bawaan: Gemini, OpenAI, Anthropic, OpenRouter, Groq, HidePulsa. Tambah provider OpenAI-compatible lain di tab <span class="font-semibold">Provider Kustom</span>.</li>
+                    <li>Slide PPT: AI bebas desain. Gambar (jika ada) di-scrape lalu disimpan di <span class="font-mono">storage/material-presentations/…/images/</span>.</li>
                 </ul>
 
             </div>
+        </div>
+
+        {{-- ============= TAB: PROVIDER KUSTOM ============= --}}
+        <div x-show="tab==='custom'" x-cloak class="space-y-5">
+            <div class="grid lg:grid-cols-3 gap-4 sm:gap-6">
+                <div class="lg:col-span-2 glass p-5 sm:p-7" x-data="customProviderForm()">
+                    <div class="flex items-center gap-3 mb-5">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 grid place-items-center text-white shrink-0">
+                            <x-icon name="puzzle" class="w-5 h-5"/>
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tambah Provider Kustom</h3>
+                            <p class="text-xs text-slate-500">Untuk API OpenAI-compatible (DeepSeek, Together, Ollama gateway, dll).</p>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="{{ url('/admin/ai/custom-providers') }}" class="space-y-4">
+                        @csrf
+                        <div class="grid sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Nama Provider</label>
+                                <input name="name" required maxlength="80" placeholder="Contoh: DeepSeek" class="input-glass"
+                                       x-model="name" @input="syncSlug()">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Slug</label>
+                                <input name="slug" maxlength="40" placeholder="custom_deepseek" class="input-glass font-mono text-sm"
+                                       x-model="slug">
+                                <p class="text-[11px] text-slate-500 mt-1">Harus diawali <span class="font-mono">custom_</span></p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Base URL</label>
+                            <input name="base_url" required type="url" placeholder="https://api.deepseek.com/v1" class="input-glass font-mono text-sm"
+                                   x-model="baseUrl">
+                            <p class="text-[11px] text-slate-500 mt-1">Sistem otomatis pakai <span class="font-mono">/models</span> dan <span class="font-mono">/chat/completions</span>.</p>
+                        </div>
+
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-slate-600 dark:text-slate-300 font-medium">Endpoint lanjutan (opsional)</summary>
+                            <div class="grid sm:grid-cols-2 gap-3 mt-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Chat URL</label>
+                                    <input name="chat_url" type="url" placeholder="https://..." class="input-glass font-mono text-xs" x-model="chatUrl">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Models URL</label>
+                                    <input name="models_url" type="url" placeholder="https://..." class="input-glass font-mono text-xs" x-model="modelsUrl">
+                                </div>
+                            </div>
+                        </details>
+
+                        <div class="rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-white/60 dark:border-white/10 p-3">
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">API Key (untuk tes fetch model)</label>
+                            <input type="password" autocomplete="off" placeholder="Opsional — untuk uji koneksi sebelum simpan" class="input-glass"
+                                   x-model="apiKey">
+                            <div class="flex flex-wrap items-center gap-2 mt-2">
+                                <button type="button" class="btn-secondary text-sm" @click="previewModels()" :disabled="previewLoading">
+                                    <x-icon name="rocket" class="w-4 h-4"/>
+                                    <span x-text="previewLoading ? 'Mengambil model…' : 'Tes Fetch Model'"></span>
+                                </button>
+                                <span class="text-xs text-emerald-600" x-show="previewCount > 0" x-text="previewCount + ' model ditemukan'"></span>
+                                <span class="text-xs text-rose-600" x-show="previewError" x-text="previewError"></span>
+                            </div>
+                            <div class="mt-2 max-h-28 overflow-y-auto text-xs font-mono text-slate-600 dark:text-slate-300" x-show="previewModelsList.length">
+                                <template x-for="m in previewModelsList" :key="m">
+                                    <div x-text="m"></div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <button class="btn-primary"><x-icon name="plus" class="w-4 h-4"/> Simpan Provider</button>
+                    </form>
+                </div>
+
+                <div class="glass p-4 sm:p-6">
+                    <h3 class="font-semibold text-slate-800 dark:text-slate-100 mb-3">Cara kerja</h3>
+                    <ul class="text-sm text-slate-600 dark:text-slate-300 space-y-2 list-disc pl-5">
+                        <li>Provider kustom diasumsikan <span class="font-semibold">OpenAI-compatible</span>.</li>
+                        <li>Setelah disimpan, tambahkan API key di tab <span class="font-semibold">API Key Pool</span>.</li>
+                        <li>Daftar model di-fetch otomatis dari endpoint <span class="font-mono">/v1/models</span> saat memilih provider.</li>
+                        <li>Gunakan tombol <span class="font-semibold">Tes Fetch Model</span> untuk validasi sebelum menyimpan.</li>
+                    </ul>
+                </div>
+            </div>
+
+            @if(empty($customProviders))
+                <div class="glass p-8 text-center text-slate-500">Belum ada provider kustom.</div>
+            @else
+                <div class="space-y-3">
+                    @foreach($customProviders as $slug => $cfg)
+                        @php $urls = $aiService->customProviderUrls($slug); @endphp
+                        <div class="glass p-4 sm:p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">{{ $cfg['name'] ?? $slug }}</h3>
+                                    <p class="text-xs font-mono text-slate-500">{{ $slug }}</p>
+                                    <p class="text-xs text-slate-500 mt-1 break-all">{{ $cfg['base_url'] ?? '' }}</p>
+                                    @if($urls)
+                                        <p class="text-[11px] text-slate-400 mt-1 break-all">models: {{ $urls['models'] }}</p>
+                                    @endif
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button type="button" class="btn-ghost p-2" title="Edit" @click="$dispatch('open-modal', 'custom-edit-{{ $slug }}')">
+                                        <x-icon name="pencil" class="w-4 h-4"/>
+                                    </button>
+                                    <button type="button" class="btn-ghost p-2 text-rose-600" title="Hapus" @click="$dispatch('open-modal', 'custom-del-{{ $slug }}')">
+                                        <x-icon name="trash" class="w-4 h-4"/>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <x-modal-glass name="custom-edit-{{ $slug }}" title="Edit Provider Kustom" max-width="lg">
+                            <form method="POST" action="{{ url('/admin/ai/custom-providers/'.$slug) }}" class="space-y-3">
+                                @csrf @method('PUT')
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Nama</label>
+                                    <input name="name" value="{{ $cfg['name'] ?? '' }}" required class="input-glass">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Base URL</label>
+                                    <input name="base_url" value="{{ $cfg['base_url'] ?? '' }}" required type="url" class="input-glass font-mono text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Chat URL (opsional)</label>
+                                    <input name="chat_url" value="{{ $cfg['chat_url'] ?? '' }}" type="url" class="input-glass font-mono text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">Models URL (opsional)</label>
+                                    <input name="models_url" value="{{ $cfg['models_url'] ?? '' }}" type="url" class="input-glass font-mono text-sm">
+                                </div>
+                                <div class="flex justify-end gap-2 pt-2">
+                                    <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'custom-edit-{{ $slug }}')">Batal</button>
+                                    <button class="btn-primary">Simpan</button>
+                                </div>
+                            </form>
+                        </x-modal-glass>
+
+                        <x-modal-glass name="custom-del-{{ $slug }}" title="Hapus Provider Kustom" max-width="md">
+                            <p class="text-slate-600 dark:text-slate-300">Hapus provider <span class="font-semibold">{{ $cfg['name'] ?? $slug }}</span>?</p>
+                            <form method="POST" action="{{ url('/admin/ai/custom-providers/'.$slug) }}" class="flex justify-end gap-2 mt-5">
+                                @csrf @method('DELETE')
+                                <button type="button" class="btn-secondary" @click="$dispatch('close-modal', 'custom-del-{{ $slug }}')">Batal</button>
+                                <button class="btn-danger"><x-icon name="trash" class="w-4 h-4"/> Hapus</button>
+                            </form>
+                        </x-modal-glass>
+                    @endforeach
+                </div>
+            @endif
         </div>
 
         {{-- ============= TAB: API KEY POOL ============= --}}
@@ -247,6 +422,50 @@
                     const toIdx   = inputs.findIndex(i => +i.value === targetId);
                     inputs[fromIdx].parentNode.insertBefore(inputs[fromIdx], inputs[toIdx]);
                     this.dragId = null;
+                },
+            }
+        }
+
+        function customProviderForm() {
+            return {
+                name: '',
+                slug: '',
+                baseUrl: '',
+                chatUrl: '',
+                modelsUrl: '',
+                apiKey: '',
+                previewLoading: false,
+                previewError: '',
+                previewCount: 0,
+                previewModelsList: [],
+                syncSlug() {
+                    if (this.slug) return;
+                    const s = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                    this.slug = s ? 'custom_' + s : '';
+                },
+                async previewModels() {
+                    this.previewLoading = true;
+                    this.previewError = '';
+                    this.previewCount = 0;
+                    this.previewModelsList = [];
+                    try {
+                        const params = new URLSearchParams({
+                            base_url: this.baseUrl,
+                            models_url: this.modelsUrl,
+                            api_key: this.apiKey,
+                        });
+                        const res = await fetch('{{ url('/admin/ai/custom-providers/preview-models') }}?' + params.toString(), {
+                            headers: { 'Accept': 'application/json' },
+                        });
+                        const data = await res.json();
+                        if (!data.ok) throw new Error(data.message || 'Gagal fetch model.');
+                        this.previewModelsList = data.models || [];
+                        this.previewCount = data.count || 0;
+                    } catch (e) {
+                        this.previewError = e.message;
+                    } finally {
+                        this.previewLoading = false;
+                    }
                 },
             }
         }

@@ -6,6 +6,7 @@ use App\Models\Material;
 use App\Models\Question;
 use App\Models\Submission;
 use App\Services\AIService;
+use App\Services\MaterialPresentationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -117,6 +118,21 @@ class StudentController extends Controller
 
         $filename = 'Materi-'.str()->slug($material->title).'-'.now()->format('Ymd').'.pdf';
         return $pdf->download($filename);
+    }
+
+    public function viewSlidesPresentation(Material $material, MaterialPresentationService $presentations): Response
+    {
+        $this->ensureCanAccess($material);
+        $path = $presentations->findSlidesPath($material);
+        abort_unless($path, 404, 'Presentasi belum tersedia.');
+
+        $html = $presentations->prepareForDisplay((string) $presentations->read($path));
+        abort_unless($html, 404, 'File presentasi tidak ditemukan.');
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'X-Frame-Options' => 'SAMEORIGIN',
+        ]);
     }
 
     protected function gradeWithAi(AIService $ai, Material $material, Question $question, string $answer): array
